@@ -223,19 +223,19 @@ class AppEndpointWebFS {
   /**
    *
    * @param {WebSocket}webSocket
-   * @param {ParsedUrlQuery}query
+   * @param {{compositorSessionId: string, fd: string}}transferArgs
    */
-  incomingDataTransfer (webSocket, query) {
-    const compositorSessionId = query.compositorSessionId
+  incomingDataTransfer (webSocket, transferArgs) {
+    const { compositorSessionId, fd } = transferArgs
+
     if (compositorSessionId !== this._compositorSessionId) {
       // fd did not originate from here
       // TODO close with error code & message (+log?)
       webSocket.close()
       return
     }
-    const fd = query.fd
     // TODO do we want to do something differently based on the type?
-    // const type = query.type
+    // const type = transferArgs.type
 
     const target = fs.createWriteStream(null, { fd: Number.parseInt(fd) })
     new WebsocketStream(webSocket).pipe(target)

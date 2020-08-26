@@ -24,7 +24,8 @@
     "pino-pretty": "^4.1.0",
     "websocket-stream": "^5.5.2",
     "westfield-endpoint": "0.3.2",
-    "ws": "^7.3.1"
+    "ws": "^7.3.1",
+    "xtsb": "0.0.1-alpha.1"
   },
   "devDependencies": {
     "standard": "^14.3.4",
