@@ -16,6 +16,8 @@
     }
   },
   sessionConfig: {
+    // Indicates if we should launch an XWayland server to support legacy X11 applications.
+    xWayland: true,
     // Time to wait in milli seconds before destroying this session when no
     // more native clients are running.
     destroyTimeout: 60000,
