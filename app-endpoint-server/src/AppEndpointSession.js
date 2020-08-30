@@ -34,7 +34,7 @@ const { sessionConfig } = require('../config.json5')
 const SurfaceBufferEncoding = require('./SurfaceBufferEncoding')
 const NativeCompositorSession = require('./NativeCompositorSession')
 const { Endpoint } = require('westfield-endpoint')
-const { nodeConnectionSetup } = require('xtsb')
+const { nodeFDConnectionSetup } = require('xtsb')
 
 // const { authorizeApplicationLaunch } = require('./CloudFunctions')
 
@@ -116,7 +116,7 @@ class AppEndpointSession {
       // this will continue once an XWayland server is launched eg. when an X client tries to connect.
       const x11ConnectionFD = await this._listenXWayland()
       // TODO create node socket from fd and pass it on to the connection setup
-      const { xConnectionSocket, setup } = await nodeConnectionSetup({ display: this._xDisplay })()
+      const { xConnectionSocket, setup } = await nodeFDConnectionSetup(x11ConnectionFD)()
 
       const setupJSON = JSON.stringify(setup)
       webSocket.send(setupJSON)
@@ -129,6 +129,8 @@ class AppEndpointSession {
         xConnectionSocket.close()
       }
       xConnectionSocket.onData = data => webSocket.send(data)
+    } else {
+      webSocket.close(4501, `[app-endpoint-session: ${this.compositorSessionId}] - XWayland not enabled.`)
     }
   }
 
