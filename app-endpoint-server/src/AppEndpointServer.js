@@ -88,7 +88,7 @@ class AppEndpointServer {
   async handleHttpUpgradeRequest (request, socket, head) {
     try {
       const wsURL = url.parse(request.url, true)
-      const compositorSessionId = wsURL.query.compositorSessionId
+      const compositorSessionId = wsURL.query['compositorSessionId']
 
       this._logger.info(`Received web socket upgrade request with compositor session id: ${compositorSessionId}. Delegating to a session child process.`)
       if (compositorSessionId && uuidRegEx.test(compositorSessionId)) {

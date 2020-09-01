@@ -4,7 +4,7 @@ const xwmConnections: { [key: string]: XWMConnection } = {}
 
 export async function ensureXWMConnection(appEndpointURL: URL) {
   const xwmEndpointURL = new URL(appEndpointURL.origin)
-  xwmEndpointURL.searchParams.append('xwayland', 'connect')
+  xwmEndpointURL.searchParams.append('xwayland', 'connection')
 
   const xwmEndpointUrlHref = xwmEndpointURL.href
   if (xwmConnections[xwmEndpointUrlHref] === undefined) {

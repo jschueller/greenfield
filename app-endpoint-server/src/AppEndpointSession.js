@@ -221,14 +221,17 @@ class AppEndpointSession {
       this._logger.debug(`New web socket open.`)
       if (query['clientId']) {
         await this.createWlConnection(webSocket, query)
-      } else if (query['xwayland']) {
-        await this.createXConnection(webSocket, query)
+      } else if (query['xwayland'] === 'connection') {
+        await this.createXConnection(webSocket)
       } else if (query['launch']) {
         this.launchNativeApplication(webSocket, query)
       } else if (query['fd']) {
         this.handleIncomingDataTransfer(webSocket, query)
       }
     } catch (e) {
+      this._logger.error('\tname: ' + e.name + ' message: ' + e.message + ' text: ' + e.text)
+      this._logger.error('error object stack: ')
+      this._logger.error(e.stack)
       webSocket.close(4503, `[app-endpoint-session: ${this.compositorSessionId}] - Server encountered an exception.`)
     }
   }
