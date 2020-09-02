@@ -1,8 +1,9 @@
 import { connect, webConnectionSetup, XConnection } from 'xtsb'
+import RemoteSocket from '../RemoteSocket'
 
 const xwmConnections: { [key: string]: XWMConnection } = {}
 
-export async function ensureXWMConnection(appEndpointURL: URL) {
+export async function ensureXWMConnection(appEndpointURL: URL, remoteSocket: RemoteSocket) {
   const xwmEndpointURL = new URL(appEndpointURL.origin)
   xwmEndpointURL.searchParams.append('xwayland', 'connection')
 
@@ -10,10 +11,23 @@ export async function ensureXWMConnection(appEndpointURL: URL) {
   if (xwmConnections[xwmEndpointUrlHref] === undefined) {
     const webSocket = new WebSocket(xwmEndpointUrlHref)
 
+    const xServerWaylandConnectionRequest = new Promise<void>(resolve => {
+      webSocket.onmessage = ev => {
+        // TODO validate data
+        const { args: { clientId } } = JSON.parse(ev.data)
+        const webSocketURL = new URL(webSocket.url)
+        webSocketURL.searchParams.delete('xwayland')
+        webSocketURL.searchParams.append('clientId', `${clientId}`)
+
+        const newWebSocket = new WebSocket(webSocketURL.href)
+        remoteSocket.onWebSocket(newWebSocket)
+      }
+    })
     const xwmConnection = await XWMConnection.create(webSocket)
     // only resolves once the first X client connects, so we won't await setup() here.
-    xwmConnection.setup()
+    await xServerWaylandConnectionRequest
     xwmConnection.onDestroy().then(() => delete xwmConnections[xwmEndpointUrlHref])
+    await xwmConnection.setup()
     xwmConnections[xwmEndpointUrlHref] = xwmConnection
   }
 }

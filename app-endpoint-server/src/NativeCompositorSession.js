@@ -28,6 +28,8 @@ const { sessionConfig } = require('../config.json5')
 
 const AppEndpointWebFS = require('./AppEndpointWebFS')
 
+const publicClientIdOffset = 100
+
 class NativeCompositorSession {
   /**
    * @param {string}compositorSessionId
@@ -102,9 +104,10 @@ class NativeCompositorSession {
     this._clients = []
     /**
      * @type {number}
+     * 0-99 reserved for privileged compositor clients.
      * @private
      */
-    this._nextClientId = 0
+    this._nextClientId = publicClientIdOffset
     /**
      * @type {?number}
      * @private
@@ -174,7 +177,7 @@ class NativeCompositorSession {
 
     if (client) {
       client.nativeClientSession = NativeClientSession.create(wlClient, this, client.webSocketChannel)
-    } else {
+    } else if (client.id >= publicClientIdOffset) {
       const webSocketChannel = WebSocketChannel.createNoWebSocket()
       const id = this._nextClientId++
       client = {
@@ -209,12 +212,24 @@ class NativeCompositorSession {
     this._destroyTimeoutTimer = setTimeout(() => this.destroy(), sessionConfig.destroyTimeout)
   }
 
+  /**
+   * @param {WebSocket}webSocket
+   */
   childSpawned (webSocket) {
     webSocket.binaryType = 'arraybuffer'
+    this.addClient(WebSocketChannel.create(webSocket), this._nextClientId++, null)
+  }
+
+  /**
+   * @param {WebSocketChannel}webSocketChannel
+   * @param {number}id
+   * @param {NativeClientSession}nativeClientSession
+   */
+  addClient (webSocketChannel, id, nativeClientSession) {
     this._clients.push({
-      webSocketChannel: WebSocketChannel.create(webSocket),
-      nativeClientSession: null,
-      id: this._nextClientId++
+      webSocketChannel,
+      nativeClientSession,
+      id
     })
   }
 

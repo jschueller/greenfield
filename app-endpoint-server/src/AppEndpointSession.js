@@ -33,6 +33,8 @@ const { /** @type {WebSocketServer} */Server } = require('ws')
 const { sessionConfig } = require('../config.json5')
 const SurfaceBufferEncoding = require('./SurfaceBufferEncoding')
 const NativeCompositorSession = require('./NativeCompositorSession')
+const WebSocketChannel = require('./WebSocketChannel')
+const NativeClientSession = require('./NativeClientSession')
 const { Endpoint } = require('westfield-endpoint')
 const { nodeFDConnectionSetup } = require('xtsb')
 
@@ -113,22 +115,30 @@ class AppEndpointSession {
    */
   async createXConnection (webSocket) {
     if (sessionConfig.xWayland) {
-      // this will continue once an XWayland server is launched eg. when an X client tries to connect.
-      const x11ConnectionFD = await this._listenXWayland()
-      // TODO create node socket from fd and pass it on to the connection setup
-      const { xConnectionSocket, setup } = await nodeFDConnectionSetup(x11ConnectionFD)()
+      const listenXWayland = this._listenXWayland()
+      webSocket.onopen = async _ => {
+        // will continue once an XWayland server is launched eg. when an X client tries to connect.
+        const { wmFd, wlClient } = await listenXWayland
+        const xWaylandClientId = 0
+        const xWaylandWebSocketChannel = WebSocketChannel.createNoWebSocket()
+        this._nativeCompositorSession.addClient(xWaylandWebSocketChannel, xWaylandClientId, NativeClientSession.create(wlClient, this._nativeCompositorSession, xWaylandWebSocketChannel))
+        webSocket.send(JSON.stringify({ command: 'requestWebSocket', args: { clientId: xWaylandClientId } }))
 
-      const setupJSON = JSON.stringify(setup)
-      webSocket.send(setupJSON)
+        await new Promise(resolve => xWaylandWebSocketChannel.onopen = () => resolve())
+        const { xConnectionSocket, setup } = await nodeFDConnectionSetup(wmFd)()
 
-      webSocket.binaryType = 'arraybuffer'
-      webSocket.onmessage = ev => xConnectionSocket.write(ev.data)
-      webSocket.onclose = _ => xConnectionSocket.close()
-      webSocket.onerror = ev => {
-        console.error('XConnection websocket error: ' + ev)
-        xConnectionSocket.close()
+        const setupJSON = JSON.stringify(setup)
+        webSocket.send(setupJSON)
+
+        webSocket.binaryType = 'arraybuffer'
+        webSocket.onmessage = ev => xConnectionSocket.write(ev.data)
+        webSocket.onclose = _ => xConnectionSocket.close()
+        webSocket.onerror = ev => {
+          console.error('XConnection websocket error: ' + ev)
+          xConnectionSocket.close()
+        }
+        xConnectionSocket.onData = data => webSocket.send(data)
       }
-      xConnectionSocket.onData = data => webSocket.send(data)
     } else {
       webSocket.close(4501, `[app-endpoint-session: ${this.compositorSessionId}] - XWayland not enabled.`)
     }
@@ -185,14 +195,14 @@ class AppEndpointSession {
   }
 
   /**
-   * @return {Promise<number>} fd of the socket where the X11 window manager can connect to
+   * @return {Promise<{wmFd: number, wlClient: Object}>}
    * @private
    */
   async _listenXWayland () {
     // TODO move this to an XWayland class
     return new Promise((resolve, reject) => {
-      const nativeXWayland = Endpoint.setupXWayland(this._nativeCompositorSession.wlDisplay, wmFd => {
-        resolve(wmFd)
+      const nativeXWayland = Endpoint.setupXWayland(this._nativeCompositorSession.wlDisplay, (wmFd, wlClient) => {
+        resolve({ wmFd, wlClient })
       }, () => {
         // TODO what should we do here?
       })
