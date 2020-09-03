@@ -170,14 +170,19 @@ class NativeCompositorSession {
    * @private
    */
   _onClientCreated (wlClient) {
+    if (this._clients.find(client => client.nativeClientSession && client.nativeClientSession.wlClient === wlClient)) {
+      // (privileged) client is already registered
+      return
+    }
+
     this._logger.info(`New Wayland client connected.`)
     this._stopDestroyTimeout()
 
     let client = this._clients.find((client) => client.nativeClientSession === null)
 
-    if (client) {
+    if (client && client.id >= publicClientIdOffset) {
       client.nativeClientSession = NativeClientSession.create(wlClient, this, client.webSocketChannel)
-    } else if (client.id >= publicClientIdOffset) {
+    } else if (client === undefined) {
       const webSocketChannel = WebSocketChannel.createNoWebSocket()
       const id = this._nextClientId++
       client = {
@@ -190,16 +195,9 @@ class NativeCompositorSession {
       this._requestWebSocket(id, wlClient)
     }
 
-    client.nativeClientSession.onDestroy().then(() => {
-      const idx = this._clients.indexOf(client)
-      if (idx > -1) {
-        this._clients.splice(idx, 1)
-
-        if (this._clients.length === 0) {
-          this._startDestroyTimeout()
-        }
-      }
-    })
+    if (client.nativeClientSession) {
+      client.nativeClientSession.onDestroy().then(() => this.removeClient(client))
+    }
   }
 
   _stopDestroyTimeout () {
@@ -217,20 +215,40 @@ class NativeCompositorSession {
    */
   childSpawned (webSocket) {
     webSocket.binaryType = 'arraybuffer'
-    this.addClient(WebSocketChannel.create(webSocket), this._nextClientId++, null)
+    this.addClient({
+      webSocketChannel: WebSocketChannel.create(webSocket),
+      id: this._nextClientId++,
+      nativeClientSession: null
+    })
   }
 
   /**
-   * @param {WebSocketChannel}webSocketChannel
-   * @param {number}id
-   * @param {NativeClientSession}nativeClientSession
+   * @param {{
+      webSocketChannel: WebSocketChannel,
+      nativeClientSession: NativeClientSession,
+      id: number
+    }}client
    */
-  addClient (webSocketChannel, id, nativeClientSession) {
-    this._clients.push({
-      webSocketChannel,
-      nativeClientSession,
-      id
-    })
+  addClient (client) {
+    this._clients.push(client)
+  }
+
+  /**
+   * @param {{
+      webSocketChannel: WebSocketChannel,
+      nativeClientSession: NativeClientSession,
+      id: number
+    }}client
+   */
+  removeClient (client) {
+    const idx = this._clients.indexOf(client)
+    if (idx > -1) {
+      this._clients.splice(idx, 1)
+
+      if (this._clients.length === 0) {
+        this._startDestroyTimeout()
+      }
+    }
   }
 
   /**
