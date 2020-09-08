@@ -45,7 +45,9 @@ export default class RemoteAppLauncher implements CompositorRemoteAppLauncher {
     appEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
 
     // make sure we listen for X connections in case the remote app is an X client
-    await ensureXWMConnection(appEndpointURL, this._remoteSocket)
+
+    // don't wait for xwm as it will only be launched in response to an X client connecting.
+    ensureXWMConnection(appEndpointURL, this._remoteSocket, this._session.compositorSessionId)
     const webSocket = new window.WebSocket(appEndpointURL.href)
     return this._remoteSocket.onWebSocket(webSocket)
   }

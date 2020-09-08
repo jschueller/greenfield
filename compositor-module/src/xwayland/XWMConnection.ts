@@ -1,10 +1,11 @@
-import { connect, webConnectionSetup, XConnection } from 'xtsb'
+import { connect, XConnection, webConnectionSetup } from 'xtsb'
 import RemoteSocket from '../RemoteSocket'
 
 const xwmConnections: { [key: string]: XWMConnection } = {}
 
-export async function ensureXWMConnection(appEndpointURL: URL, remoteSocket: RemoteSocket) {
+export async function ensureXWMConnection(appEndpointURL: URL, remoteSocket: RemoteSocket, compositorSessionId: string) {
   const xwmEndpointURL = new URL(appEndpointURL.origin)
+  xwmEndpointURL.searchParams.append('compositorSessionId', compositorSessionId)
   xwmEndpointURL.searchParams.append('xwayland', 'connection')
 
   const xwmEndpointUrlHref = xwmEndpointURL.href

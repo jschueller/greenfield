@@ -270,37 +270,6 @@ class AppEndpointSession {
   }
 }
 
-/**
- * @param {WebSocketServer}webSocketServer
- * @param {WebSocket}webSocket
- * @param {IncomingHttpHeaders}headers
- * @param {ParsedUrlQuery}query
- * @private
- */
-async function _handleFirstUpgrade (webSocketServer, webSocket, headers, query) {
-  // create new session on first connection
-  const appEndpointSession = AppEndpointSession.create(query)
-  appEndpointSession.onDestroy().then(() => process.exit(0))
-  await appEndpointSession.handleConnection(webSocket, headers, query)
-
-  process.on('message', (request, socket) => {
-    const { query, ...req } = request[0]
-    const head = request[1]
-
-    if (socket) {
-      // handle subsequent upgrades
-      webSocketServer.handleUpgrade(
-        req,
-        socket,
-        head,
-        webSocket => appEndpointSession.handleConnection(webSocket, req.headers, query)
-      )
-    } else {
-      logger.warn('Received a non-existent websocket. Ignoring')
-    }
-  })
-}
-
 function main () {
   process.on('uncaughtException', e => {
     logger.error('\tname: ' + e.name + ' message: ' + e.message + ' text: ' + e.text)
@@ -311,13 +280,24 @@ function main () {
   SurfaceBufferEncoding.init()
 
   const webSocketServer = /** @type {WebSocketServer} */new Server(sessionConfig.webSocketServer.options)
+  let appEndpointSession = undefined
 
-  process.once('message', (request, socket) => {
+  process.on('message', (request, socket) => {
     const { query, ...req } = request[0]
     const head = request[1]
     if (socket) {
-      // handle first websocket connection
-      webSocketServer.handleUpgrade(req, socket, head, webSocket => _handleFirstUpgrade(webSocketServer, webSocket, req.headers, query))
+      if (appEndpointSession === undefined) {
+        // handle first websocket connection
+        appEndpointSession = AppEndpointSession.create(query)
+        appEndpointSession.onDestroy().then(() => process.exit(0))
+      }
+      // handle subsequent upgrades
+      webSocketServer.handleUpgrade(
+        req,
+        socket,
+        head,
+        webSocket => appEndpointSession.handleConnection(webSocket, req.headers, query)
+      )
     } else {
       logger.warn('Received a non-existent websocket. Ignoring')
     }
