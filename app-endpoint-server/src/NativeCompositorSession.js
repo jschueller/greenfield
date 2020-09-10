@@ -178,9 +178,9 @@ class NativeCompositorSession {
     this._logger.info(`New Wayland client connected.`)
     this._stopDestroyTimeout()
 
-    let client = this._clients.find((client) => client.nativeClientSession === null)
+    let client = this._clients.find((client) => client.nativeClientSession === null && client.id >= publicClientIdOffset)
 
-    if (client && client.id >= publicClientIdOffset) {
+    if (client) {
       client.nativeClientSession = NativeClientSession.create(wlClient, this, client.webSocketChannel)
     } else if (client === undefined) {
       const webSocketChannel = WebSocketChannel.createNoWebSocket()

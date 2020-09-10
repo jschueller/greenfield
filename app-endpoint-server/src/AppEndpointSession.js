@@ -148,7 +148,7 @@ class AppEndpointSession {
       }
       this._nativeCompositorSession.addClient(xWaylandClient)
 
-      // Will only continue once an XWayland server is launched which is triggered by an X client trying to connect.
+      // Will only continue once an XWayland server is launching which is triggered by an X client trying to connect.
       const { wmFd, wlClient } = await startingXWayland
       // Ask compositor for a new wayland client websocket connection, which the XWayland server can use to render it's output.
       webSocket.send(JSON.stringify({ command: 'requestWebSocket', args: { clientId: xWaylandClientId } }))
@@ -157,6 +157,7 @@ class AppEndpointSession {
 
       // SIGUSR1 is raised once Xwayland is done initializing.
       process.on('SIGUSR1', () => {
+        this._logger.info(`[app-endpoint-session: ${this.compositorSessionId}] - XWayland started.`)
         process.on('SIGCHLD', () => {
           // TODO call to native code
         })
@@ -249,13 +250,13 @@ class AppEndpointSession {
    * @param {IncomingHttpHeaders}headers
    * @param {ParsedUrlQuery}query
    */
-  async handleConnection (webSocket, headers, query) {
+  handleConnection (webSocket, headers, query) {
     try {
       this._logger.debug(`New web socket open.`)
       if (query['clientId']) {
-        await this.createWlConnection(webSocket, query)
+        this.createWlConnection(webSocket, query)
       } else if (query['xwayland'] === 'connection') {
-        await this.createXConnection(webSocket)
+        this.createXConnection(webSocket)
       } else if (query['launch']) {
         this.launchNativeApplication(webSocket, query)
       } else if (query['fd']) {
