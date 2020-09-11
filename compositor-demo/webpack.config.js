@@ -5,11 +5,11 @@ const CopyPlugin = require('copy-webpack-plugin')
 const webpack = require('webpack')
 
 module.exports = {
-  mode: 'development',
+  // mode: 'development',
   entry: {
     app: './src/index.ts'
   },
-  devtool: 'source-map',
+  // devtool: 'source-map',
   plugins: [
     new CleanWebpackPlugin(),
     new HtmlWebpackPlugin({
