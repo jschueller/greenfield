@@ -22,6 +22,7 @@ export async function ensureXWMConnection(appEndpointURL: URL, remoteSocket: Rem
 
         const newWebSocket = new WebSocket(webSocketURL.href)
         remoteSocket.onWebSocket(newWebSocket)
+        resolve()
       }
     })
     const xwmConnection = await XWMConnection.create(webSocket)
