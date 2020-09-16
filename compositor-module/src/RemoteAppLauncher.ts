@@ -19,7 +19,6 @@ import { Client } from 'westfield-runtime-server'
 import { CompositorRemoteAppLauncher } from './index'
 import RemoteSocket from './RemoteSocket'
 import Session from './Session'
-import { ensureXWMConnection } from './xwayland/XWMConnection'
 
 export default class RemoteAppLauncher implements CompositorRemoteAppLauncher {
   private readonly _session: Session
@@ -46,8 +45,8 @@ export default class RemoteAppLauncher implements CompositorRemoteAppLauncher {
 
     // make sure we listen for X connections in case the remote app is an X client
 
-    // don't wait for xwm as it will only be launched in response to an X client connecting.
-    ensureXWMConnection(appEndpointURL, this._remoteSocket, this._session.compositorSessionId)
+    // don't wait for xwayland as it will only be launched in response to an X client connecting.
+    this._remoteSocket.ensureXWayland(appEndpointURL)
     const webSocket = new window.WebSocket(appEndpointURL.href)
     return this._remoteSocket.onWebSocket(webSocket)
   }

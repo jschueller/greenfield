@@ -21,6 +21,9 @@ import { CompositorRemoteSocket } from './index'
 import RemoteOutOfBandChannel from './RemoteOutOfBandChannel'
 import StreamingBuffer from './remotestreaming/StreamingBuffer'
 import Session from './Session'
+import { XWMConnection } from './xwayland/XWMConnection'
+
+const xwmConnections: { [key: string]: XWMConnection } = {}
 
 class RemoteSocket implements CompositorRemoteSocket {
   private readonly _session: Session
@@ -33,6 +36,22 @@ class RemoteSocket implements CompositorRemoteSocket {
 
   private constructor(session: Session) {
     this._session = session
+  }
+
+  async ensureXWayland(appEndpointURL: URL) {
+    const xwmEndpointURL = new URL(appEndpointURL.origin)
+    xwmEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
+    xwmEndpointURL.searchParams.append('xwayland', 'connection')
+
+    const xwmEndpointUrlHref = xwmEndpointURL.href
+
+    if (xwmConnections[xwmEndpointUrlHref] === undefined) {
+
+      // FIXME add connection lifecycle management
+      const xWaylandWebSocket = new WebSocket(xwmEndpointUrlHref)
+      // TODO we probably want to give this client some special treatment
+      const xWaylandClient = await this.onWebSocket(xWaylandWebSocket)
+    }
   }
 
   private async _getShmTransferable(webFD: WebFD): Promise<ArrayBuffer> {
@@ -206,6 +225,7 @@ class RemoteSocket implements CompositorRemoteSocket {
       this.onWebSocket(newWebSocket)
     })
 
+    // listen for recycled resource ids
     outOfBandChannel.setListener(6, outOfBandMessage => {
       if (client.connection.closed) {
         return
@@ -213,6 +233,26 @@ class RemoteSocket implements CompositorRemoteSocket {
 
       const ids = new Uint32Array(outOfBandMessage.buffer, outOfBandMessage.byteOffset)
       client.recycledIds = Array.from(ids)
+    })
+
+    // listen for XWayland XWM connection request
+    outOfBandChannel.setListener(7, async outOfBandMessage => {
+      if (client.connection.closed) {
+        return
+      }
+
+      const wmFD = new Uint32Array(outOfBandMessage.buffer, outOfBandMessage.byteOffset)[0]
+
+      const xwmEndpointURL = new URL(new URL(webSocket.url).origin)
+      xwmEndpointURL.searchParams.append('xwmFD', `${wmFD}`)
+      xwmEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
+
+      const xwmEndpointUrlHref = xwmEndpointURL.href
+      // FIXME we probably want some connection lifecycle management here
+      const xwmConnection = await XWMConnection.create(new WebSocket(xwmEndpointUrlHref))
+      xwmConnection.onDestroy().then(() => delete xwmConnections[xwmEndpointUrlHref])
+      await xwmConnection.setup()
+      xwmConnections[xwmEndpointUrlHref] = xwmConnection
     })
   }
 

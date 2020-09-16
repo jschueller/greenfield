@@ -111,11 +111,12 @@ class AppEndpointSession {
   }
 
   /**
-   * @param {number} wmFD
    * @param {WebSocket}webSocket
+   * @param {ParsedUrlQuery}query
    * @private
    */
-  async _startXWM (wmFD, webSocket, xWaylandClientId) {
+  async createXWMConnection (webSocket, query) {
+    const wmFD = Number.parseInt(query['xwmFD'])
     // initialize an X11 client connection, used by the compositor's X11 window manager.
     const { xConnectionSocket, setup } = await nodeFDConnectionSetup(wmFD)()
     const setupJSON = JSON.stringify(setup)
@@ -136,24 +137,10 @@ class AppEndpointSession {
    */
   async createXConnection (webSocket) {
     if (sessionConfig.xWayland) {
-      const xWaylandClientId = 0
-
-      const startingXWayland = this._listenXWayland()
-
-      const xWaylandWebSocketChannel = WebSocketChannel.createNoWebSocket()
-      const xWaylandClient = {
-        webSocketChannel: xWaylandWebSocketChannel,
-        id: xWaylandClientId,
-        nativeClientSession: null
-      }
-      this._nativeCompositorSession.addClient(xWaylandClient)
+      this._nativeCompositorSession.childSpawned(webSocket)
 
       // Will only continue once an XWayland server is launching which is triggered by an X client trying to connect.
-      const { wmFd, wlClient } = await startingXWayland
-      // Ask compositor for a new wayland client websocket connection, which the XWayland server can use to render it's output.
-      webSocket.send(JSON.stringify({ command: 'requestWebSocket', args: { clientId: xWaylandClientId } }))
-      xWaylandClient.nativeClientSession = NativeClientSession.create(wlClient, this._nativeCompositorSession, xWaylandWebSocketChannel)
-      xWaylandClient.nativeClientSession.onDestroy().then(() => this._nativeCompositorSession.removeClient(xWaylandClient))
+      const { wmFd, wlClient } = await this._listenXWayland()
 
       // SIGUSR1 is raised once Xwayland is done initializing.
       process.on('SIGUSR1', () => {
@@ -161,7 +148,8 @@ class AppEndpointSession {
         process.on('SIGCHLD', () => {
           // TODO call to native code
         })
-        this._startXWM(wmFd, webSocket, xWaylandClientId)
+
+        webSocket.send(Uint32Array.from([7, wmFd]).buffer)
       })
     } else {
       webSocket.close(4501, `[app-endpoint-session: ${this.compositorSessionId}] - XWayland not enabled.`)
@@ -257,6 +245,8 @@ class AppEndpointSession {
         this.createWlConnection(webSocket, query)
       } else if (query['xwayland'] === 'connection') {
         this.createXConnection(webSocket)
+      } else if (query['xwmFD']) {
+        this.createXWMConnection(webSocket, query)
       } else if (query['launch']) {
         this.launchNativeApplication(webSocket, query)
       } else if (query['fd']) {

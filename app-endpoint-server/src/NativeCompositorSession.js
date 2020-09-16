@@ -28,8 +28,6 @@ const { sessionConfig } = require('../config.json5')
 
 const AppEndpointWebFS = require('./AppEndpointWebFS')
 
-const publicClientIdOffset = 100
-
 class NativeCompositorSession {
   /**
    * @param {string}compositorSessionId
@@ -99,15 +97,14 @@ class NativeCompositorSession {
     this.wlDisplay = null
     /**
      * @type {Array<{webSocketChannel: WebSocketChannel, nativeClientSession: ?NativeClientSession, id: number}>}
-     * @private
      */
-    this._clients = []
+    this.clients = []
     /**
      * @type {number}
      * 0-99 reserved for privileged compositor clients.
      * @private
      */
-    this._nextClientId = publicClientIdOffset
+    this._nextClientId = 100
     /**
      * @type {?number}
      * @private
@@ -141,7 +138,7 @@ class NativeCompositorSession {
       this._destroyTimeoutTimer = null
     }
 
-    this._clients.forEach(client => client.nativeClientSession.destroy())
+    this.clients.forEach(client => client.nativeClientSession.destroy())
     Endpoint.destroyDisplay(this.wlDisplay)
 
     this._destroyResolve()
@@ -155,7 +152,7 @@ class NativeCompositorSession {
    */
   _requestWebSocket (clientId, wlClient) {
     // We hijack the very first web socket connection we find to send an out of band message asking for a new web socket.
-    const client = this._clients.find(client => client.webSocketChannel.webSocket !== null)
+    const client = this.clients.find(client => client.webSocketChannel.webSocket !== null)
     if (client) {
       client.nativeClientSession.requestWebSocket(clientId)
     } else {
@@ -170,19 +167,14 @@ class NativeCompositorSession {
    * @private
    */
   _onClientCreated (wlClient) {
-    if (this._clients.find(client => client.nativeClientSession && client.nativeClientSession.wlClient === wlClient)) {
-      // (privileged) client is already registered
-      return
-    }
-
     this._logger.info(`New Wayland client connected.`)
     this._stopDestroyTimeout()
 
-    let client = this._clients.find((client) => client.nativeClientSession === null && client.id >= publicClientIdOffset)
+    let client = this.clients.find((client) => client.nativeClientSession === null)
 
     if (client) {
       client.nativeClientSession = NativeClientSession.create(wlClient, this, client.webSocketChannel)
-    } else if (client === undefined) {
+    } else {
       const webSocketChannel = WebSocketChannel.createNoWebSocket()
       const id = this._nextClientId++
       client = {
@@ -190,7 +182,7 @@ class NativeCompositorSession {
         webSocketChannel,
         id
       }
-      this._clients.push(client)
+      this.clients.push(client)
       // no browser initiated web sockets available, so ask compositor to create a new one linked to clientId
       this._requestWebSocket(id, wlClient)
     }
@@ -215,7 +207,7 @@ class NativeCompositorSession {
    */
   childSpawned (webSocket) {
     webSocket.binaryType = 'arraybuffer'
-    this.addClient({
+    this.clients.push({
       webSocketChannel: WebSocketChannel.create(webSocket),
       id: this._nextClientId++,
       nativeClientSession: null
@@ -229,23 +221,12 @@ class NativeCompositorSession {
       id: number
     }}client
    */
-  addClient (client) {
-    this._clients.push(client)
-  }
-
-  /**
-   * @param {{
-      webSocketChannel: WebSocketChannel,
-      nativeClientSession: NativeClientSession,
-      id: number
-    }}client
-   */
   removeClient (client) {
-    const idx = this._clients.indexOf(client)
+    const idx = this.clients.indexOf(client)
     if (idx > -1) {
-      this._clients.splice(idx, 1)
+      this.clients.splice(idx, 1)
 
-      if (this._clients.length === 0) {
+      if (this.clients.length === 0) {
         this._startDestroyTimeout()
       }
     }
@@ -258,7 +239,7 @@ class NativeCompositorSession {
   socketForClient (webSocket, clientId) {
     // As a side effect, this will notify the NativeClientSession that a web socket is now available
     webSocket.binaryType = 'arraybuffer'
-    this._clients.find(client => client.id === clientId).webSocketChannel.webSocket = webSocket
+    this.clients.find(client => client.id === clientId).webSocketChannel.webSocket = webSocket
   }
 
   /**
