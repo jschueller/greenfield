@@ -21,9 +21,10 @@ import { CompositorRemoteSocket } from './index'
 import RemoteOutOfBandChannel from './RemoteOutOfBandChannel'
 import StreamingBuffer from './remotestreaming/StreamingBuffer'
 import Session from './Session'
-import { XWMConnection } from './xwayland/XWMConnection'
+import { XWaylandConnection } from './xwayland/XWaylandConnection'
+import { XWindowManager } from './xwayland/XWindowManager'
 
-const xwmConnections: { [key: string]: XWMConnection } = {}
+const xwmConnections: { [key: string]: XWaylandConnection } = {}
 
 class RemoteSocket implements CompositorRemoteSocket {
   private readonly _session: Session
@@ -40,8 +41,8 @@ class RemoteSocket implements CompositorRemoteSocket {
 
   async ensureXWayland(appEndpointURL: URL) {
     const xwmEndpointURL = new URL(appEndpointURL.origin)
-    xwmEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
     xwmEndpointURL.searchParams.append('xwayland', 'connection')
+    xwmEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
 
     const xwmEndpointUrlHref = xwmEndpointURL.href
 
@@ -218,8 +219,9 @@ class RemoteSocket implements CompositorRemoteSocket {
       const uint32Array = new Uint32Array(outOfBandMessage.buffer, outOfBandMessage.byteOffset)
       const clientId = uint32Array[0]
 
-      const webSocketURL = new URL(webSocket.url)
+      const webSocketURL = new URL(new URL(webSocket.url).origin)
       webSocketURL.searchParams.append('clientId', `${clientId}`)
+      webSocketURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
 
       const newWebSocket = new WebSocket(webSocketURL.href)
       this.onWebSocket(newWebSocket)
@@ -249,10 +251,15 @@ class RemoteSocket implements CompositorRemoteSocket {
 
       const xwmEndpointUrlHref = xwmEndpointURL.href
       // FIXME we probably want some connection lifecycle management here
-      const xwmConnection = await XWMConnection.create(new WebSocket(xwmEndpointUrlHref))
+      const xwmConnection = await XWaylandConnection.create(new WebSocket(xwmEndpointUrlHref))
       xwmConnection.onDestroy().then(() => delete xwmConnections[xwmEndpointUrlHref])
-      await xwmConnection.setup()
       xwmConnections[xwmEndpointUrlHref] = xwmConnection
+
+      try {
+        XWindowManager.create(xwmConnection)
+      } catch (e) {
+        console.error('Failed to create X Window Manager.', e)
+      }
     })
   }
 

@@ -1,11 +1,11 @@
-import { connect, XConnection, webConnectionSetup } from 'xtsb'
+import { connect, webConnectionSetup, XConnection } from 'xtsb'
 
-export class XWMConnection {
-  static create(webSocket: WebSocket): Promise<XWMConnection> {
-    return new Promise<XWMConnection>((resolve, reject) => {
+export class XWaylandConnection {
+  static create(webSocket: WebSocket): Promise<XWaylandConnection> {
+    return new Promise<XWaylandConnection>((resolve, reject) => {
       webSocket.onopen = async _ => {
         webSocket.onerror = ev => console.log(`XWM connection ${webSocket.url} error: ${ev}`)
-        const xwm = new XWMConnection(webSocket)
+        const xwm = new XWaylandConnection(webSocket)
         webSocket.onclose = _ => xwm.destroy()
         resolve(xwm)
       }
@@ -22,8 +22,7 @@ export class XWMConnection {
   private readonly destroyPromise: Promise<void>
 
   // @ts-ignore assigned in constructor in promise cb
-  private setupResolve: (value?: (PromiseLike<void> | void)) => void
-  private readonly setupPromise: Promise<void>
+  private setupPromise?: Promise<XConnection>
 
   xConnection?: XConnection
   readonly webSocket: WebSocket
@@ -31,7 +30,6 @@ export class XWMConnection {
   constructor(webSocket: WebSocket) {
     this.webSocket = webSocket
     this.destroyPromise = new Promise<void>(resolve => this.destroyResolve = resolve)
-    this.setupPromise = new Promise<void>(resolve => this.setupResolve = resolve)
   }
 
   destroy() {
@@ -42,10 +40,13 @@ export class XWMConnection {
     return this.destroyPromise
   }
 
-  setup(): Promise<void> {
-    connect(webConnectionSetup(this.webSocket))
-      .then(xConnection => this.xConnection = xConnection)
-      .then(() => this.setupResolve())
+  setup(): Promise<XConnection> {
+    if (this.setupPromise === undefined) {
+      this.setupPromise = new Promise<XConnection>(async resolve => {
+        this.xConnection = await connect(webConnectionSetup(this.webSocket))
+        resolve(this.xConnection)
+      })
+    }
     return this.setupPromise
   }
 }
