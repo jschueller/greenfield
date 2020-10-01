@@ -1,16 +1,32 @@
 import {
   Atom,
+  ButtonPressEvent,
+  ButtonReleaseEvent,
   chars,
+  ClientMessageEvent,
   ColormapAlloc,
   Composite,
+  ConfigureNotifyEvent,
+  ConfigureRequestEvent,
+  CreateNotifyEvent,
+  DestroyNotifyEvent,
+  EnterNotifyEvent,
   EventMask,
+  FocusInEvent,
   getComposite,
   getRender,
   getXFixes,
+  LeaveNotifyEvent,
+  MapNotifyEvent,
+  MapRequestEvent,
+  MotionNotifyEvent,
+  PropertyNotifyEvent,
   PropMode,
   Render,
+  ReparentNotifyEvent,
   SCREEN,
   Time,
+  UnmapNotifyEvent,
   Window,
   WINDOW,
   WindowClass,
@@ -352,7 +368,35 @@ export class XWindowManager {
 
     const wmWindow = await createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
 
-    return new XWindowManager(xConnection, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
+
+    const xWindowManager = new XWindowManager(xConnection, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
+
+    // TODO listen for any event here
+    // TODO see weston weston_wm_handle_selection_event
+    // xConnection.onEvent = xWindowManager.handleSelectionEvent(event)
+    // TODO see weston weston_wm_handle_dnd_event
+    // xConnection.onEvent = xWindowManager.handleDndEvent(event)
+
+
+    xConnection.onButtonPressEvent = event => xWindowManager.handleButton(event)
+    xConnection.onButtonReleaseEvent = event => xWindowManager.handleButton(event)
+    xConnection.onEnterNotifyEvent = event => xWindowManager.handleEnter(event)
+    xConnection.onLeaveNotifyEvent = event => xWindowManager.handleLeave(event)
+    xConnection.onMotionNotifyEvent = event => xWindowManager.handleMotion(event)
+    xConnection.onCreateNotifyEvent = event => xWindowManager.handleCreateNotify(event)
+    xConnection.onMapRequestEvent = event => xWindowManager.handleMapRequest(event)
+    xConnection.onMapNotifyEvent = event => xWindowManager.handleMapNotify(event)
+    xConnection.onUnmapNotifyEvent = event => xWindowManager.handleUnmapNotify(event)
+    xConnection.onReparentNotifyEvent = event => xWindowManager.handleReparentNotify(event)
+    xConnection.onConfigureRequestEvent = event => xWindowManager.handleConfigureRequest(event)
+    xConnection.onConfigureNotifyEvent = event => xWindowManager.handleConfigureNotify(event)
+    xConnection.onDestroyNotifyEvent = event => xWindowManager.handleDestroyNotify(event)
+    // xConnection.onMappingNotifyEvent = event => console.log(JSON.stringify(event))
+    xConnection.onPropertyNotifyEvent = event => xWindowManager.handlePropertyNotify(event)
+    xConnection.onClientMessageEvent = event => xWindowManager.handleClientMessage(event)
+    xConnection.onFocusInEvent = event => xWindowManager.handleFocusIn(event)
+
+    return xWindowManager
   }
 
   private readonly xConnection: XConnection
@@ -385,5 +429,65 @@ export class XWindowManager {
     this.colormap = colormap
     this.screen = screen
     this.wmWindow = wmWindow
+  }
+
+  private handleButton(event: ButtonPressEvent | ButtonReleaseEvent) {
+    // TODO
+  }
+
+  private handleEnter(event: EnterNotifyEvent) {
+// TODO
+  }
+
+  private handleLeave(event: LeaveNotifyEvent) {
+// TODO
+  }
+
+  private handleMotion(event: MotionNotifyEvent) {
+// TODO
+  }
+
+  private handleCreateNotify(event: CreateNotifyEvent) {
+// TODO
+  }
+
+  private handleMapRequest(event: MapRequestEvent) {
+// TODO
+  }
+
+  private handleMapNotify(event: MapNotifyEvent) {
+// TODO
+  }
+
+  private handleUnmapNotify(event: UnmapNotifyEvent) {
+// TODO
+  }
+
+  private handleReparentNotify(event: ReparentNotifyEvent) {
+// TODO
+  }
+
+  private handleConfigureRequest(event: ConfigureRequestEvent) {
+// TODO
+  }
+
+  private handleConfigureNotify(event: ConfigureNotifyEvent) {
+// TODO
+  }
+
+  private handleDestroyNotify(event: DestroyNotifyEvent) {
+// TODO
+  }
+
+  private handlePropertyNotify(event: PropertyNotifyEvent) {
+// TODO
+  }
+
+  private handleClientMessage(event: ClientMessageEvent) {
+// TODO
+  }
+
+  private handleFocusIn(event: FocusInEvent) {
+// TODO
   }
 }
