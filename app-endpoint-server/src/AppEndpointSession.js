@@ -123,7 +123,7 @@ class AppEndpointSession {
     webSocket.send(setupJSON)
 
     webSocket.binaryType = 'arraybuffer'
-    webSocket.onmessage = ev => xConnectionSocket.write(ev.data)
+    webSocket.onmessage = ev => xConnectionSocket.write(Buffer.from(ev.data))
     webSocket.onclose = _ => xConnectionSocket.close()
     webSocket.onerror = ev => {
       console.error('XConnection websocket error: ' + ev)

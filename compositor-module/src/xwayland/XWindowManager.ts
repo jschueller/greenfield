@@ -2,21 +2,21 @@ import {
   Atom,
   chars,
   ColormapAlloc,
+  Composite,
   EventMask,
   getComposite,
   getRender,
   getXFixes,
   PropMode,
+  Render,
   SCREEN,
   Time,
   Window,
   WINDOW,
   WindowClass,
-  XConnection
+  XConnection,
+  XFixes
 } from 'xtsb'
-import { Composite, Redirect } from 'xtsb/dist/types/xcbComposite'
-import { PICTFORMINFO, PictType, Render } from 'xtsb/dist/types/xcbRender'
-import { XFixes } from 'xtsb/dist/types/xcbXFixes'
 import { XWaylandConnection } from './XWaylandConnection'
 
 type NamedAtom = [
@@ -93,12 +93,12 @@ type XWMAtoms = {
 }
 
 interface XWindowManagerResources {
-  xFixes: XFixes,
-  composite: Composite,
-  render: Render,
+  xFixes: XFixes.XFixes,
+  composite: Composite.Composite,
+  render: Render.Render,
   xwmAtoms: XWMAtoms,
-  formatRgb: PICTFORMINFO,
-  formatRgba: PICTFORMINFO
+  formatRgb: Render.PICTFORMINFO,
+  formatRgba: Render.PICTFORMINFO
 }
 
 interface VisualAndColormap {
@@ -187,18 +187,18 @@ async function setupResources(xConnection: XConnection): Promise<XWindowManagerR
   atomReplies.forEach(({ atom }, index) => atoms[index][1] = atom)
 
   const { formats } = await formatsReply
-  let formatRgb: PICTFORMINFO | undefined = undefined
-  let formatRgba: PICTFORMINFO | undefined = undefined
+  let formatRgb: Render.PICTFORMINFO | undefined = undefined
+  let formatRgba: Render.PICTFORMINFO | undefined = undefined
   formats.forEach(format => {
     if (format.direct.redMask != 0xff &&
       format.direct.redShift != 16) {
       return
     }
-    if (format._type == PictType.Direct &&
+    if (format._type == Render.PictType.Direct &&
       format.depth == 24) {
       formatRgb = format
     }
-    if (format._type == PictType.Direct &&
+    if (format._type == Render.PictType.Direct &&
       format.depth == 32 &&
       format.direct.alphaMask == 0xff &&
       format.direct.alphaShift == 24) {
@@ -261,51 +261,53 @@ function setNetActiveWindow(xConnection: XConnection, screen: SCREEN, xwmAtoms: 
   xConnection.changeProperty(PropMode.Replace, screen.root, xwmAtoms._NET_ACTIVE_WINDOW, xwmAtoms.WINDOW, 32, new Uint32Array([window]))
 }
 
-function createWMWindow(xConnection: XConnection, screen: SCREEN, xwmAtoms: XWMAtoms) {
+async function createWMWindow(xConnection: XConnection, screen: SCREEN, xwmAtoms: XWMAtoms) {
   const wmWindow = xConnection.allocateID()
-  xConnection.createWindow(
-    WindowClass.CopyFromParent,
-    wmWindow,
-    screen.root,
-    0,
-    0,
-    10,
-    10,
-    0,
-    WindowClass.InputOutput,
-    screen.rootVisual,
-    {}
-  )
+  await Promise.all([
+    xConnection.createWindow(
+      WindowClass.CopyFromParent,
+      wmWindow,
+      screen.root,
+      0,
+      0,
+      10,
+      10,
+      0,
+      WindowClass.InputOutput,
+      screen.rootVisual,
+      {}
+    ).check(),
 
-  xConnection.changeProperty(
-    PropMode.Replace,
-    wmWindow,
-    xwmAtoms._NET_SUPPORTING_WM_CHECK,
-    Atom.WINDOW,
-    32,
-    new Uint32Array([wmWindow])
-  )
+    xConnection.changeProperty(
+      PropMode.Replace,
+      wmWindow,
+      xwmAtoms._NET_SUPPORTING_WM_CHECK,
+      Atom.WINDOW,
+      32,
+      new Uint32Array([wmWindow])
+    ).check(),
 
-  xConnection.changeProperty(
-    PropMode.Replace,
-    wmWindow,
-    xwmAtoms._NET_WM_NAME,
-    xwmAtoms.UTF8_STRING,
-    8,
-    chars('Greenfield WM')
-  )
+    xConnection.changeProperty(
+      PropMode.Replace,
+      wmWindow,
+      xwmAtoms._NET_WM_NAME,
+      xwmAtoms.UTF8_STRING,
+      8,
+      chars('Greenfield WM')
+    ).check(),
 
-  xConnection.changeProperty(
-    PropMode.Replace,
-    screen.root,
-    xwmAtoms._NET_SUPPORTING_WM_CHECK,
-    Atom.WINDOW,
-    32,
-    new Uint32Array([wmWindow])
-  )
+    xConnection.changeProperty(
+      PropMode.Replace,
+      screen.root,
+      xwmAtoms._NET_SUPPORTING_WM_CHECK,
+      Atom.WINDOW,
+      32,
+      new Uint32Array([wmWindow])
+    ).check(),
 
-  xConnection.setSelectionOwner(wmWindow, xwmAtoms.WM_S0, Time.CurrentTime)
-  xConnection.setSelectionOwner(wmWindow, xwmAtoms._NET_WM_CM_S0, Time.CurrentTime)
+    xConnection.setSelectionOwner(wmWindow, xwmAtoms.WM_S0, Time.CurrentTime).check(),
+    xConnection.setSelectionOwner(wmWindow, xwmAtoms._NET_WM_CM_S0, Time.CurrentTime).check()
+  ])
 
   return wmWindow
 }
@@ -318,7 +320,7 @@ export class XWindowManager {
 
     xConnection.changeWindowAttributes(xConnection.setup.roots[0].root, { eventMask: EventMask.SubstructureNotify | EventMask.SubstructureRedirect | EventMask.PropertyChange })
     const { composite, xwmAtoms } = xWmResources
-    composite.redirectSubwindows(xConnection.setup.roots[0].root, Redirect.Manual)
+    composite.redirectSubwindows(xConnection.setup.roots[0].root, Composite.Redirect.Manual)
 
     //An immediately invoked lambda that uses function argument destructuring to filter out elements and return them as an array.
     const supported = (({
@@ -328,15 +330,14 @@ export class XWindowManager {
                           _NET_WM_STATE_MAXIMIZED_VERT,
                           _NET_WM_STATE_MAXIMIZED_HORZ,
                           _NET_ACTIVE_WINDOW
-                        }: XWMAtoms) =>
-      ([
-        _NET_WM_MOVERESIZE,
-        _NET_WM_STATE,
-        _NET_WM_STATE_FULLSCREEN,
-        _NET_WM_STATE_MAXIMIZED_VERT,
-        _NET_WM_STATE_MAXIMIZED_HORZ,
-        _NET_ACTIVE_WINDOW
-      ]))(xwmAtoms)
+                        }: XWMAtoms) => [
+      _NET_WM_MOVERESIZE,
+      _NET_WM_STATE,
+      _NET_WM_STATE_FULLSCREEN,
+      _NET_WM_STATE_MAXIMIZED_VERT,
+      _NET_WM_STATE_MAXIMIZED_HORZ,
+      _NET_ACTIVE_WINDOW
+    ])(xwmAtoms)
 
     xConnection.changeProperty(PropMode.Replace, xConnection.setup.roots[0].root, xwmAtoms._NET_SUPPORTED, Atom.ATOM, 32, new Uint32Array(supported))
 
@@ -349,18 +350,18 @@ export class XWindowManager {
     // TODO
     createCursor()
 
-    const wmWindow = createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
+    const wmWindow = await createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
 
     return new XWindowManager(xConnection, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
   }
 
   private readonly xConnection: XConnection
   private readonly xwmAtoms: XWMAtoms
-  private readonly composite: Composite
-  private readonly render: Render
-  private readonly xFixes: XFixes
-  private readonly formatRgb: PICTFORMINFO
-  private readonly formatRgba: PICTFORMINFO
+  private readonly composite: Composite.Composite
+  private readonly render: Render.Render
+  private readonly xFixes: XFixes.XFixes
+  private readonly formatRgb: Render.PICTFORMINFO
+  private readonly formatRgba: Render.PICTFORMINFO
   private readonly visualId: number
   private readonly colormap: number
   private readonly screen: SCREEN
@@ -382,7 +383,6 @@ export class XWindowManager {
     this.formatRgba = formatRgba
     this.visualId = visualId
     this.colormap = colormap
-
     this.screen = screen
     this.wmWindow = wmWindow
   }
