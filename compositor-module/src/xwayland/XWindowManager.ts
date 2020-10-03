@@ -35,10 +35,15 @@ import {
   XConnection,
   XFixes
 } from 'xtsb'
+import Rect from '../math/Rect'
+import Region from '../Region'
+import Surface from '../Surface'
 import { XWaylandConnection } from './XWaylandConnection'
 
 type ConfigureValueList = Parameters<XConnection['configureWindow']>
 type MwmDecor = number
+
+const topBarHeight = 25
 
 const MWM_DECOR_ALL: 1 = 1
 const MWM_DECOR_BORDER: 2 = 2
@@ -217,6 +222,9 @@ class DesktopXwaylandSurface {
 }
 
 interface WmWindow {
+  repaintScheduled: boolean
+  hasAlpha: boolean
+  surface: Surface
   width: number
   height: number
   frameId: WINDOW
@@ -519,7 +527,7 @@ export class XWindowManager {
   }
 
   private readonly xConnection: XConnection
-  private readonly xwmAtoms: XWMAtoms
+  private readonly atoms: XWMAtoms
   private readonly composite: Composite.Composite
   private readonly render: Render.Render
   private readonly xFixes: XFixes.XFixes
@@ -539,7 +547,7 @@ export class XWindowManager {
     wmWindow: WINDOW
   ) {
     this.xConnection = xConnection
-    this.xwmAtoms = xwmAtoms
+    this.atoms = xwmAtoms
     this.composite = composite
     this.render = render
     this.xFixes = xFixes
@@ -581,7 +589,7 @@ export class XWindowManager {
       return
     }
 
-    await this.windowReadProperties(window)
+    await this.wmWindowReadProperties(window)
 
     /* For a new Window, MapRequest happens before the Window is realized
      * in Xwayland. We do the real xcb_map_window() here as a response to
@@ -608,9 +616,19 @@ export class XWindowManager {
       throw new Error('Assertion failed. X window should have a parent window.')
     }
 
-    this.setAllowCommits(window, false)
+    this.wmWindowSetAllowCommits(window, false)
     this.setWmState(window, ICCCM_NORMAL_STATE)
-    // TODO more
+    this.setNetWmState(window)
+    this.setVirtualDesktop(window, 0)
+    // TODO legacy_fullscreen see weston window-manager.c
+
+    this.xConnection.mapWindow(event.window)
+    this.xConnection.mapWindow(window.frameId)
+
+    /* Mapped in the X server, we can draw immediately.
+     * Cannot set pending state though, no weston_surface until
+     * xserver_map_shell_surface() time. */
+    this.wmWindowScheduleRepaint(window)
   }
 
   private handleMapNotify(event: MapNotifyEvent) {
@@ -658,7 +676,7 @@ export class XWindowManager {
     return this.windowHash[window]
   }
 
-  private async windowReadProperties(window: WmWindow) {
+  private async wmWindowReadProperties(window: WmWindow) {
     if (!window.propertiesDirty) {
       return
     }
@@ -675,16 +693,16 @@ export class XWindowManager {
           window.transientFor = lookupWindow
         }
       }],
-      [this.xwmAtoms.WM_PROTOCOLS, TYPE_WM_PROTOCOLS, ({ value, valueLen }) => {
+      [this.atoms.WM_PROTOCOLS, TYPE_WM_PROTOCOLS, ({ value, valueLen }) => {
         const atoms = new Uint32Array(value.buffer)
         for (let i = 0; i < valueLen; i++) {
-          if (atoms[i] === this.xwmAtoms.WM_DELETE_WINDOW) {
+          if (atoms[i] === this.atoms.WM_DELETE_WINDOW) {
             window.deleteWindow = true
             break
           }
         }
       }],
-      [this.xwmAtoms.WM_NORMAL_HINTS, TYPE_WM_NORMAL_HINTS, ({ value }) => {
+      [this.atoms.WM_NORMAL_HINTS, TYPE_WM_NORMAL_HINTS, ({ value }) => {
         const [flags, x, y, width, height, minWidth, minHeight, maxWidth, maxHeight, widthInc, heightInc, minAspectX, minAspectY, maxAspectX, maxAspectY, baseWidth, baseHeight, winGravity] = new Uint32Array(value.buffer)
         window.sizeHints = {
           flags,
@@ -705,25 +723,25 @@ export class XWindowManager {
           winGravity
         }
       }],
-      [this.xwmAtoms._NET_WM_STATE, TYPE_NET_WM_STATE, ({ value, valueLen }) => {
+      [this.atoms._NET_WM_STATE, TYPE_NET_WM_STATE, ({ value, valueLen }) => {
         window.fullscreen = false
         const atoms = new Uint32Array(value.buffer)
         for (let i = 0; i < valueLen; i++) {
-          if (atoms[i] === this.xwmAtoms._NET_WM_STATE_FULLSCREEN) {
+          if (atoms[i] === this.atoms._NET_WM_STATE_FULLSCREEN) {
             window.fullscreen = true
           }
-          if (atoms[i] === this.xwmAtoms._NET_WM_STATE_MAXIMIZED_VERT) {
+          if (atoms[i] === this.atoms._NET_WM_STATE_MAXIMIZED_VERT) {
             window.maximizedVertical = true
           }
-          if (atoms[i] === this.xwmAtoms._NET_WM_STATE_MAXIMIZED_HORZ) {
+          if (atoms[i] === this.atoms._NET_WM_STATE_MAXIMIZED_HORZ) {
             window.maximizedHorizontal = true
           }
         }
       }],
-      [this.xwmAtoms._NET_WM_WINDOW_TYPE, Atom.ATOM, ({ value }) => window.type = new Uint32Array(value.buffer)[0]],
-      [this.xwmAtoms._NET_WM_NAME, Atom.STRING, ({ value }) => window.name = value.chars()],
-      [this.xwmAtoms._NET_WM_PID, Atom.CARDINAL, ({ value }) => window.pid = new Uint32Array(value.buffer)[0]],
-      [this.xwmAtoms._MOTIF_WM_HINTS, TYPE_MOTIF_WM_HINTS, ({ value }) => {
+      [this.atoms._NET_WM_WINDOW_TYPE, Atom.ATOM, ({ value }) => window.type = new Uint32Array(value.buffer)[0]],
+      [this.atoms._NET_WM_NAME, Atom.STRING, ({ value }) => window.name = value.chars()],
+      [this.atoms._NET_WM_PID, Atom.CARDINAL, ({ value }) => window.pid = new Uint32Array(value.buffer)[0]],
+      [this.atoms._MOTIF_WM_HINTS, TYPE_MOTIF_WM_HINTS, ({ value }) => {
         const [flags, functions, decorations, inputMode, status] = new Uint32Array(value.buffer)
         window.motifHints = {
           flags,
@@ -741,7 +759,7 @@ export class XWindowManager {
           }
         }
       }],
-      [this.xwmAtoms.WM_CLIENT_MACHINE, Atom.wmClientMachine, ({ value }) => window.machine = value.chars()]
+      [this.atoms.WM_CLIENT_MACHINE, Atom.wmClientMachine, ({ value }) => window.machine = value.chars()]
     ]
 
     props.forEach(([atom, type, propUpdater]: Prop) =>
@@ -762,11 +780,8 @@ export class XWindowManager {
     // TODO paint a nice window bar using canvas2d
     // TODO see weston window-manager.c weston_wm_window_create_frame for more implementation details
 
-    const topBarHeight = 25
-    const frameWidth = window.width
-    const frameHeight = window.height + topBarHeight
-    const childX = 0
-    const childY = topBarHeight
+    const { width, height } = this.wmWindowGetFrameSize(window)
+    const { x, y } = this.wmWindowGetChildPosition(window)
 
     window.frameId = this.xConnection.allocateID()
     this.xConnection.createWindow(
@@ -775,8 +790,8 @@ export class XWindowManager {
       this.screen.root,
       0,
       0,
-      frameWidth,
-      frameHeight,
+      width,
+      height,
       0,
       WindowClass.InputOutput,
       this.visualId,
@@ -794,7 +809,7 @@ export class XWindowManager {
         colormap: this.colormap
       })
 
-    this.xConnection.reparentWindow(window.id, window.frameId, childX, childY)
+    this.xConnection.reparentWindow(window.id, window.frameId, x, y)
 
     this.configureWindow(window.id, { borderWidth: 0 })
 
@@ -817,18 +832,163 @@ export class XWindowManager {
    * @param window The XWM window to control.
    * @param allow Whether Xwayland is allowed to wl_surface.commit for the window.
    */
-  private setAllowCommits(window: WmWindow, allow: boolean) {
+  private wmWindowSetAllowCommits(window: WmWindow, allow: boolean) {
     if (window.frameId === undefined) {
       throw new Error('Window does not have a parent.')
     }
 
-    this.xConnection.changeProperty(PropMode.Replace, window.frameId, this.xwmAtoms._XWAYLAND_ALLOW_COMMITS, Atom.CARDINAL, 32, new Uint32Array([allow ? 1 : 0]))
+    this.xConnection.changeProperty(PropMode.Replace, window.frameId, this.atoms._XWAYLAND_ALLOW_COMMITS, Atom.CARDINAL, 32, new Uint32Array([allow ? 1 : 0]))
   }
 
   private setWmState(window: WmWindow, state: number) {
-    this.xConnection.changeProperty(PropMode.Replace, window.id, this.xwmAtoms.WM_STATE, this.xwmAtoms.WM_STATE, 32, new Uint32Array([
+    this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms.WM_STATE, this.atoms.WM_STATE, 32, new Uint32Array([
       state,
       Window.None
     ]))
+  }
+
+  private setNetWmState(window: WmWindow) {
+    const property: number[] = []
+    if (window.fullscreen) {
+      property.push(this.atoms._NET_WM_STATE_FULLSCREEN)
+    }
+    if (window.maximizedVertical) {
+      property.push(this.atoms._NET_WM_STATE_MAXIMIZED_VERT)
+    }
+    if (window.maximizedVertical) {
+      property.push(this.atoms._NET_WM_STATE_MAXIMIZED_HORZ)
+    }
+
+    this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms._NET_WM_STATE, Atom.ATOM, 32, new Uint32Array(property))
+  }
+
+  private setVirtualDesktop(window: WmWindow, desktop: number) {
+    if (desktop >= 0) {
+      this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms._NET_WM_DESKTOP, Atom.CARDINAL, 32, new Uint32Array([desktop]))
+    } else {
+      this.xConnection.deleteProperty(window.id, this.atoms._NET_WM_DESKTOP)
+    }
+  }
+
+  private wmWindowScheduleRepaint(window: WmWindow) {
+    if (window.frameId === Window.None) {
+      /* Override-redirect windows go through here, but we
+       * cannot assert(window->override_redirect); because
+       * we do not deal with changing OR flag yet.
+       * XXX: handle OR flag changes in message handlers
+       */
+      this.wmWindowSetPendingStateOR(window)
+      return
+    }
+
+    if (window.repaintScheduled) {
+      return
+    }
+
+
+    // TODO weston uses an idle event here, check if this might cause problems in our implementation
+    this.wmWindowDoRepaint(window)
+  }
+
+  private wmWindowSetPendingStateOR(window: WmWindow) {
+    /* for override-redirect windows */
+    if (window.frameId !== Window.None) {
+      throw new Error('Can only set pending state for windows without a parent.')
+    }
+
+    if (window.surface === undefined) {
+      return
+    }
+
+    const { width, height } = this.wmWindowGetFrameSize(window)
+    Region.fini(window.surface.pendingOpaqueRegion)
+    if (window.hasAlpha) {
+      Region.init(window.surface.pendingOpaqueRegion)
+    } else {
+      Region.initRect(window.surface.pendingOpaqueRegion, Rect.create(0, 0, width, height))
+    }
+  }
+
+  private wmWindowGetChildPosition(window: WmWindow) {
+    if (window.fullscreen) {
+      return { x: 0, y: 0 }
+    } else {
+      return { x: 0, y: topBarHeight }
+    }
+  }
+
+
+  private wmWindowGetFrameSize(window: WmWindow) {
+    const width = window.width
+    const height = window.height + topBarHeight
+
+    return { width, height }
+  }
+
+  private async wmWindowDoRepaint(window: WmWindow) {
+    window.repaintScheduled = false
+    this.wmWindowSetAllowCommits(window, false)
+    await this.wmWindowReadProperties(window)
+    this.wmWindowDrawDecorations(window)
+    this.wmWindowSetPendingState(window)
+    this.wmWindowSetAllowCommits(window, true)
+  }
+
+  private wmWindowDrawDecorations(window: WmWindow) {
+    // TODO
+    if (window.fullscreen) {
+      /* nothing */
+    } else if (window.decorate) {
+      // TODO paint title in top bar
+    } else {
+      // TODO render shadow
+    }
+  }
+
+  private wmWindowSetPendingState(window: WmWindow) {
+    if (window.surface === undefined) {
+      return
+    }
+
+    const { width, height } = this.wmWindowGetFrameSize(window)
+    const { x, y } = this.wmWindowGetChildPosition(window)
+
+    Region.fini(window.surface.pendingOpaqueRegion)
+    if (window.hasAlpha) {
+      Region.init(window.surface.pendingOpaqueRegion)
+    } else {
+      /* We leave an extra pixel around the X window area to
+       * make sure we don't sample from the undefined alpha
+       * channel when filtering. */
+      Region.initRect(window.surface.pendingOpaqueRegion, Rect.create(x - 1, y - 1, window.width + 2, window.height + 2))
+    }
+
+    let inputX = 0
+    let inputY = 0
+    let inputW = 0
+    let inputH = 0
+    if (window.decorate && !window.fullscreen) {
+      // TODO grt frame_input_rect, see weston window-manager.c
+      inputX = x
+      inputY = y
+      inputW = width
+      inputH = topBarHeight
+    } else {
+      inputX = x
+      inputY = y
+      inputW = width
+      inputH = height
+    }
+
+    Region.fini(window.surface.pendingInputRegion)
+    Region.initRect(window.surface.pendingInputRegion, Rect.create(inputX, inputY, inputW, inputH))
+
+    // TODO xwayland_interface->set_window_geometry(window->shsurf,
+    //                                             input_x, input_y,
+    //                                             input_w, input_h);
+
+    if(window.name){
+      // TODO xwayland_interface->set_title(window->shsurf, window->name);
+    }
   }
 }

@@ -138,8 +138,8 @@ class Surface implements WlSurfaceRequests {
   private readonly _surfaceChildren: SurfaceChild[] = []
   private _pendingDamageRects: Rect[] = []
   private _pendingBufferDamageRects: Rect[] = []
-  private _pendingOpaqueRegion: number
-  _pendingInputRegion: number
+  pendingOpaqueRegion: number
+  pendingInputRegion: number
   private _pendingDx?: number
   private _pendingDy?: number
   private _pendingBufferTransform: number = 0
@@ -184,8 +184,8 @@ class Surface implements WlSurfaceRequests {
     this.session = session
     this.resource = wlSurfaceResource
     this.renderer = renderer
-    this._pendingOpaqueRegion = opaquePixmanRegion
-    this._pendingInputRegion = inputPixmanRegion
+    this.pendingOpaqueRegion = opaquePixmanRegion
+    this.pendingInputRegion = inputPixmanRegion
 
     this.pixmanRegion = surfacePixmanRegion
 
@@ -406,23 +406,23 @@ class Surface implements WlSurfaceRequests {
   }
 
   setOpaqueRegion(resource: WlSurfaceResource, regionResource: WlRegionResource | undefined) {
-    this._pendingOpaqueRegion = Region.createPixmanRegion()
+    this.pendingOpaqueRegion = Region.createPixmanRegion()
     if (regionResource) {
       const region = regionResource.implementation as Region
-      Region.copyTo(this._pendingOpaqueRegion, region.pixmanRegion)
+      Region.copyTo(this.pendingOpaqueRegion, region.pixmanRegion)
     } else {
-      Region.initInfinite(this._pendingOpaqueRegion)
+      Region.initInfinite(this.pendingOpaqueRegion)
     }
   }
 
   setInputRegion(resource: WlSurfaceResource, regionResource: WlRegionResource | undefined) {
-    this._pendingInputRegion = Region.createPixmanRegion()
+    this.pendingInputRegion = Region.createPixmanRegion()
     if (regionResource) {
       const region = regionResource.implementation as Region
-      Region.copyTo(this._pendingInputRegion, region.pixmanRegion)
+      Region.copyTo(this.pendingInputRegion, region.pixmanRegion)
     } else {
       // 'infinite' region
-      Region.initInfinite(this._pendingInputRegion)
+      Region.initInfinite(this.pendingInputRegion)
     }
   }
 
@@ -560,8 +560,8 @@ class Surface implements WlSurfaceRequests {
 
     const newState = createSurfaceState(
       this._pendingDamageRects.map(rect => this.bufferTransformation.timesRect(rect)).concat(this._pendingBufferDamageRects),
-      this._pendingOpaqueRegion,
-      this._pendingInputRegion,
+      this.pendingOpaqueRegion,
+      this.pendingInputRegion,
       this._pendingDx ?? 0,
       this._pendingDy ?? 0,
       this._pendingBufferTransform ?? 1,
@@ -571,8 +571,8 @@ class Surface implements WlSurfaceRequests {
       bufferContents
     )
     this._pendingFrameCallbacks = []
-    this._pendingInputRegion = 0
-    this._pendingOpaqueRegion = 0
+    this.pendingInputRegion = 0
+    this.pendingOpaqueRegion = 0
     this._pendingDamageRects = []
     this._pendingBufferDamageRects = []
 

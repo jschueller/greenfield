@@ -57,6 +57,11 @@ class Region implements WlRegionRequests {
     // lib.pixman._pixman_region32_fini(pixmanRegion)
   }
 
+  static init(pixmanRegion: number) {
+    // @ts-ignore
+    lib.pixman._pixman_region32_init(pixmanRegion)
+  }
+
   // TODO move to stand-alone exported function
   static initInfinite(pixmanRegion: number) {
     // @ts-ignore

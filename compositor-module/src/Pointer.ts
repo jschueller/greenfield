@@ -249,7 +249,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
         surface.resource.addDestroyListener(this._cursorDestroyListener)
         surface.role = this
         surface.state.inputPixmanRegion = Region.createPixmanRegion()
-        surface._pendingInputRegion = Region.createPixmanRegion()
+        surface.pendingInputRegion = Region.createPixmanRegion()
         this.scene.updatePointerView(surface)
       } else {
         this.scene.destroyPointerView()
