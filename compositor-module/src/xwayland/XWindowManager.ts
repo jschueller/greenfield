@@ -9,6 +9,7 @@ import {
   Composite,
   ConfigureNotifyEvent,
   ConfigureRequestEvent,
+  ConfigWindow,
   CreateNotifyEvent,
   DestroyNotifyEvent,
   EnterNotifyEvent,
@@ -21,6 +22,7 @@ import {
   LeaveNotifyEvent,
   MapNotifyEvent,
   MapRequestEvent,
+  marshallConfigureNotifyEvent,
   MotionNotifyEvent,
   PropertyNotifyEvent,
   PropMode,
@@ -40,7 +42,7 @@ import Region from '../Region'
 import Surface from '../Surface'
 import { XWaylandConnection } from './XWaylandConnection'
 
-type ConfigureValueList = Parameters<XConnection['configureWindow']>
+type ConfigureValueList = Parameters<XConnection['configureWindow']>[1]
 type MwmDecor = number
 
 const topBarHeight = 25
@@ -224,7 +226,7 @@ class DesktopXwaylandSurface {
 interface WmWindow {
   repaintScheduled: boolean
   hasAlpha: boolean
-  surface: Surface
+  surface?: Surface
   width: number
   height: number
   frameId: WINDOW
@@ -238,17 +240,18 @@ interface WmWindow {
   id: WINDOW
   class: string
   name: string
-  transientFor: WmWindow
+  transientFor?: WmWindow
   type: ATOM
   pid: number
   machine: string
   propertiesDirty: boolean
   overrideRedirect: boolean
-  decorate: MwmDecor
-  sizeHints: SizeHints
-  motifHints: MotifWmHints
+  decorate?: MwmDecor
+  sizeHints?: SizeHints
+  motifHints?: MotifWmHints
   deleteWindow: boolean
-  shsurf: DesktopXwaylandSurface
+  shsurf?: DesktopXwaylandSurface,
+  positionDirty: boolean
 }
 
 async function setupResources(xConnection: XConnection): Promise<XWindowManagerResources> {
@@ -576,11 +579,17 @@ export class XWindowManager {
   }
 
   private handleCreateNotify(event: CreateNotifyEvent) {
-// TODO
+    console.log(`XCB_CREATE_NOTIFY (window ${event.window}, at (${event.x}, ${event.y}), width ${event.width}, height ${event.height}${event.overrideRedirect ? 'override' : ''}${this.isOurResource(event.window) ? 'ours' : ''})`)
+    if (this.isOurResource(event.window)) {
+      return
+    }
+
+    this.wmWindowCreate(event.window, event.width, event.height, event.x, event.y, event.overrideRedirect)
   }
 
   private async handleMapRequest(event: MapRequestEvent) {
     if (this.isOurResource(event.window)) {
+      console.log(`XCB_MAP_REQUEST (window ${event.window}, ours)`)
       return
     }
 
@@ -616,6 +625,8 @@ export class XWindowManager {
       throw new Error('Assertion failed. X window should have a parent window.')
     }
 
+    console.log(`XCB_MAP_REQUEST (window ${window.id}, frame ${window.frameId}, ${window.width}x${window.height} @ ${window.mapRequestX},${window.mapRequestY})`)
+
     this.wmWindowSetAllowCommits(window, false)
     this.setWmState(window, ICCCM_NORMAL_STATE)
     this.setNetWmState(window)
@@ -632,7 +643,12 @@ export class XWindowManager {
   }
 
   private handleMapNotify(event: MapNotifyEvent) {
-// TODO
+    if (this.isOurResource(event.window)) {
+      console.log(`XCB_MAP_NOTIFY (window ${event.window}, ours)`)
+      return
+    }
+
+    console.log(`XCB_MAP_NOTIFY (window ${event.window}${event.overrideRedirect ? ', override' : ''})`)
   }
 
   private handleUnmapNotify(event: UnmapNotifyEvent) {
@@ -644,7 +660,46 @@ export class XWindowManager {
   }
 
   private handleConfigureRequest(event: ConfigureRequestEvent) {
-// TODO
+    const window = this.lookupWindow(event.window)
+    if (window === undefined) {
+      return
+    }
+
+    if (window.fullscreen) {
+      this.wmWindowSendConfigureNotify(window)
+      return
+    }
+
+    if (event.valueMask & ConfigWindow.Width) {
+      window.width = event.width
+    }
+    if (event.valueMask & ConfigWindow.Height) {
+      window.height = event.height
+    }
+
+    if (window.frameId) {
+      this.wmWindowSetAllowCommits(window, false)
+      this.frameResizeInside(window, window.width, window.height)
+    }
+
+    const { x, y } = this.wmWindowGetChildPosition(window)
+    const values: ConfigureValueList = {
+      x,
+      y,
+      width: window.width,
+      height: window.height,
+      borderWidth: 0
+    }
+    if (event.valueMask & ConfigWindow.Sibling) {
+      values.sibling = event.sibling
+    }
+    if (event.valueMask & ConfigWindow.StackMode) {
+      values.stackMode = event.stackMode
+    }
+
+    this.configureWindow(window.id, values)
+    this.wmWindowConfigureFrame(window)
+    this.wmWindowScheduleRepaint(window)
   }
 
   private handleConfigureNotify(event: ConfigureNotifyEvent) {
@@ -672,7 +727,7 @@ export class XWindowManager {
     return (id & ~resourceIdMask) === resourceIdBase
   }
 
-  private lookupWindow(window: WINDOW) {
+  private lookupWindow(window: WINDOW): WmWindow | undefined {
     return this.windowHash[window]
   }
 
@@ -816,7 +871,7 @@ export class XWindowManager {
     this.windowHash[window.frameId] = window
   }
 
-  private configureWindow(id: WINDOW, valueList: ConfigureValueList[1]) {
+  private configureWindow(id: WINDOW, valueList: ConfigureValueList) {
     this.xConnection.configureWindow(id, valueList)
   }
 
@@ -885,6 +940,7 @@ export class XWindowManager {
       return
     }
 
+    console.log(`XWM: schedule repaint, win ${window.id}`)
 
     // TODO weston uses an idle event here, check if this might cause problems in our implementation
     this.wmWindowDoRepaint(window)
@@ -936,13 +992,19 @@ export class XWindowManager {
 
   private wmWindowDrawDecorations(window: WmWindow) {
     // TODO
+    let how: string
     if (window.fullscreen) {
+      how = 'fullscreen'
       /* nothing */
     } else if (window.decorate) {
+      how = 'decorate'
       // TODO paint title in top bar
     } else {
+      how = 'shadow'
       // TODO render shadow
     }
+
+    console.log(`XWM: draw decoration, win ${window.id}, ${how}`)
   }
 
   private wmWindowSetPendingState(window: WmWindow) {
@@ -963,10 +1025,10 @@ export class XWindowManager {
       Region.initRect(window.surface.pendingOpaqueRegion, Rect.create(x - 1, y - 1, window.width + 2, window.height + 2))
     }
 
-    let inputX = 0
-    let inputY = 0
-    let inputW = 0
-    let inputH = 0
+    let inputX: number
+    let inputY: number
+    let inputW: number
+    let inputH: number
     if (window.decorate && !window.fullscreen) {
       // TODO grt frame_input_rect, see weston window-manager.c
       inputX = x
@@ -980,6 +1042,8 @@ export class XWindowManager {
       inputH = height
     }
 
+    console.log(`XWM: win ${window.id} geometry: ${inputX},${inputY} ${inputW}x${inputH}`)
+
     Region.fini(window.surface.pendingInputRegion)
     Region.initRect(window.surface.pendingInputRegion, Rect.create(inputX, inputY, inputW, inputH))
 
@@ -987,8 +1051,77 @@ export class XWindowManager {
     //                                             input_x, input_y,
     //                                             input_w, input_h);
 
-    if(window.name){
+    if (window.name) {
       // TODO xwayland_interface->set_title(window->shsurf, window->name);
     }
+  }
+
+  private wmWindowSendConfigureNotify(window: WmWindow) {
+    const { x, y } = this.wmWindowGetChildPosition(window)
+
+    const event = marshallConfigureNotifyEvent({
+      event: window.id,
+      window: window.id,
+      aboveSibling: Window.None,
+      x,
+      y,
+      width: window.width,
+      height: window.height,
+      borderWidth: 0,
+      overrideRedirect: 0
+    })
+    this.xConnection.sendEvent(0, window.id, EventMask.StructureNotify, new Int8Array(event))
+  }
+
+  private frameResizeInside(window: WmWindow, width: number, height: number) {
+    // TODO resize parent frame so it has the size of the window?
+  }
+
+  private wmWindowConfigureFrame(window: WmWindow) {
+    if (!window.frameId) {
+      return
+    }
+
+    const { height, width } = this.wmWindowGetFrameSize(window)
+    this.configureWindow(window.frameId, { width, height })
+  }
+
+  private async wmWindowCreate(id: WINDOW, width: number, height: number, x: number, y: number, overrideRedirect: number) {
+    const geometryReplyPromise = this.xConnection.getGeometry(id)
+
+    this.xConnection.changeWindowAttributes(id, { eventMask: EventMask.PropertyChange | EventMask.FocusChange })
+
+    const window: WmWindow = {
+      class: '',
+      decorate: 0,
+      deleteWindow: false,
+      frameId: 0,
+      fullscreen: false,
+      hasAlpha: false,
+      machine: '',
+      maximizedHorizontal: false,
+      maximizedVertical: false,
+      name: '',
+      pid: 0,
+      repaintScheduled: false,
+      type: 0,
+      id,
+      propertiesDirty: true,
+      overrideRedirect: !!overrideRedirect,
+      width,
+      height,
+      x,
+      y,
+      positionDirty: false,
+      mapRequestX: Number.MIN_SAFE_INTEGER, /* out of range for valid positions */
+      mapRequestY: Number.MAX_SAFE_INTEGER /* out of range for valid positions */
+    }
+
+    const geometryReply = await geometryReplyPromise
+    /* technically we should use XRender and check the visual format's
+        alpha_mask, but checking depth is simpler and works in all known cases */
+    window.hasAlpha = geometryReply.depth === 32
+
+    this.windowHash[id] = window
   }
 }
