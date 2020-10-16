@@ -47,6 +47,8 @@ type MwmDecor = number
 
 const topBarHeight = 25
 
+const SEND_EVENT_MASK = 0x80
+
 const MWM_DECOR_ALL: 1 = 1
 const MWM_DECOR_BORDER: 2 = 2
 const MWM_DECOR_RESIZEH: 4 = 4
@@ -227,6 +229,7 @@ interface WmWindow {
   repaintScheduled: boolean
   hasAlpha: boolean
   surface?: Surface
+  surfaceId?: string
   width: number
   height: number
   frameId: WINDOW
@@ -507,24 +510,23 @@ export class XWindowManager {
     // TODO see weston weston_wm_handle_dnd_event
     // xConnection.onEvent = xWindowManager.handleDndEvent(event)
 
-
-    xConnection.onButtonPressEvent = event => xWindowManager.handleButton(event)
-    xConnection.onButtonReleaseEvent = event => xWindowManager.handleButton(event)
-    xConnection.onEnterNotifyEvent = event => xWindowManager.handleEnter(event)
-    xConnection.onLeaveNotifyEvent = event => xWindowManager.handleLeave(event)
-    xConnection.onMotionNotifyEvent = event => xWindowManager.handleMotion(event)
-    xConnection.onCreateNotifyEvent = event => xWindowManager.handleCreateNotify(event)
-    xConnection.onMapRequestEvent = event => xWindowManager.handleMapRequest(event)
-    xConnection.onMapNotifyEvent = event => xWindowManager.handleMapNotify(event)
-    xConnection.onUnmapNotifyEvent = event => xWindowManager.handleUnmapNotify(event)
-    xConnection.onReparentNotifyEvent = event => xWindowManager.handleReparentNotify(event)
-    xConnection.onConfigureRequestEvent = event => xWindowManager.handleConfigureRequest(event)
-    xConnection.onConfigureNotifyEvent = event => xWindowManager.handleConfigureNotify(event)
-    xConnection.onDestroyNotifyEvent = event => xWindowManager.handleDestroyNotify(event)
+    xConnection.onButtonPressEvent = async event => await xWindowManager.handleButton(event)
+    xConnection.onButtonReleaseEvent = async event => await xWindowManager.handleButton(event)
+    xConnection.onEnterNotifyEvent = async event => await xWindowManager.handleEnter(event)
+    xConnection.onLeaveNotifyEvent = async event => await xWindowManager.handleLeave(event)
+    xConnection.onMotionNotifyEvent = async event => await xWindowManager.handleMotion(event)
+    xConnection.onCreateNotifyEvent = async event => await xWindowManager.handleCreateNotify(event)
+    xConnection.onMapRequestEvent = async event => await xWindowManager.handleMapRequest(event)
+    xConnection.onMapNotifyEvent = async event => await xWindowManager.handleMapNotify(event)
+    xConnection.onUnmapNotifyEvent = async event => await xWindowManager.handleUnmapNotify(event)
+    xConnection.onReparentNotifyEvent = async event => await xWindowManager.handleReparentNotify(event)
+    xConnection.onConfigureRequestEvent = async event => await xWindowManager.handleConfigureRequest(event)
+    xConnection.onConfigureNotifyEvent = async event => await xWindowManager.handleConfigureNotify(event)
+    xConnection.onDestroyNotifyEvent = async event => await xWindowManager.handleDestroyNotify(event)
     // xConnection.onMappingNotifyEvent = event => console.log(JSON.stringify(event))
-    xConnection.onPropertyNotifyEvent = event => xWindowManager.handlePropertyNotify(event)
-    xConnection.onClientMessageEvent = event => xWindowManager.handleClientMessage(event)
-    xConnection.onFocusInEvent = event => xWindowManager.handleFocusIn(event)
+    xConnection.onPropertyNotifyEvent = async event => await xWindowManager.handlePropertyNotify(event)
+    xConnection.onClientMessageEvent = async event => await xWindowManager.handleClientMessage(event)
+    xConnection.onFocusInEvent = async event => await xWindowManager.handleFocusIn(event)
 
     return xWindowManager
   }
@@ -541,6 +543,8 @@ export class XWindowManager {
   private readonly screen: SCREEN
   private readonly wmWindow: WINDOW
   private readonly windowHash: { [key: number]: WmWindow } = {}
+
+  private focusWindow?: WmWindow
 
   constructor(
     xConnection: XConnection,
@@ -562,29 +566,29 @@ export class XWindowManager {
     this.wmWindow = wmWindow
   }
 
-  private handleButton(event: ButtonPressEvent | ButtonReleaseEvent) {
+  private async handleButton(event: ButtonPressEvent | ButtonReleaseEvent) {
     // TODO
   }
 
-  private handleEnter(event: EnterNotifyEvent) {
+  private async handleEnter(event: EnterNotifyEvent) {
 // TODO
   }
 
-  private handleLeave(event: LeaveNotifyEvent) {
+  private async handleLeave(event: LeaveNotifyEvent) {
 // TODO
   }
 
-  private handleMotion(event: MotionNotifyEvent) {
+  private async handleMotion(event: MotionNotifyEvent) {
 // TODO
   }
 
-  private handleCreateNotify(event: CreateNotifyEvent) {
+  private async handleCreateNotify(event: CreateNotifyEvent) {
     console.log(`XCB_CREATE_NOTIFY (window ${event.window}, at (${event.x}, ${event.y}), width ${event.width}, height ${event.height}${event.overrideRedirect ? 'override' : ''}${this.isOurResource(event.window) ? 'ours' : ''})`)
     if (this.isOurResource(event.window)) {
       return
     }
 
-    this.wmWindowCreate(event.window, event.width, event.height, event.x, event.y, event.overrideRedirect)
+    await this.wmWindowCreate(event.window, event.width, event.height, event.x, event.y, event.overrideRedirect)
   }
 
   private async handleMapRequest(event: MapRequestEvent) {
@@ -628,9 +632,9 @@ export class XWindowManager {
     console.log(`XCB_MAP_REQUEST (window ${window.id}, frame ${window.frameId}, ${window.width}x${window.height} @ ${window.mapRequestX},${window.mapRequestY})`)
 
     this.wmWindowSetAllowCommits(window, false)
-    this.setWmState(window, ICCCM_NORMAL_STATE)
+    this.wmWindowSetWmState(window, ICCCM_NORMAL_STATE)
     this.setNetWmState(window)
-    this.setVirtualDesktop(window, 0)
+    this.wmWindowSetVirtualDesktop(window, 0)
     // TODO legacy_fullscreen see weston window-manager.c
 
     this.xConnection.mapWindow(event.window)
@@ -639,7 +643,7 @@ export class XWindowManager {
     /* Mapped in the X server, we can draw immediately.
      * Cannot set pending state though, no weston_surface until
      * xserver_map_shell_surface() time. */
-    this.wmWindowScheduleRepaint(window)
+    await this.wmWindowScheduleRepaint(window)
   }
 
   private handleMapNotify(event: MapNotifyEvent) {
@@ -651,15 +655,61 @@ export class XWindowManager {
     console.log(`XCB_MAP_NOTIFY (window ${event.window}${event.overrideRedirect ? ', override' : ''})`)
   }
 
-  private handleUnmapNotify(event: UnmapNotifyEvent) {
-// TODO
+  private async handleUnmapNotify(event: UnmapNotifyEvent) {
+    console.log(`XCB_UNMAP_NOTIFY (window ${event.window}, event ${event.event}${this.isOurResource(event.window) ? ', ours' : ''})`)
+    if (this.isOurResource(event.window)) {
+      return
+    }
+
+    if (event.responseType & SEND_EVENT_MASK) {
+      /* We just ignore the ICCCM 4.1.4 synthetic unmap notify
+       * as it may come in after we've destroyed the window. */
+      return
+    }
+
+    const window = this.lookupWindow(event.window)
+    if (!window) {
+      return
+    }
+
+    if (window.surfaceId) {
+      /* Make sure we're not on the unpaired surface list or we
+       * could be assigned a surface during surface creation that
+       * was mapped before this unmap request.
+       */
+      window.surfaceId = undefined
+    }
+
+    if (this.focusWindow === window) {
+      this.focusWindow = undefined
+    }
+    if (window.surface) {
+      // TODO remove surface destroy listener
+    }
+    window.surface = undefined
+    window.shsurf = undefined
+
+    this.wmWindowSetWmState(window, ICCCM_WITHDRAWN_STATE)
+    this.wmWindowSetVirtualDesktop(window, -1)
+
+    this.xConnection.unmapWindow(window.frameId)
   }
 
-  private handleReparentNotify(event: ReparentNotifyEvent) {
-// TODO
+  private async handleReparentNotify(event: ReparentNotifyEvent) {
+    console.log(`XCB_REPARENT_NOTIFY (window ${event.window}, parent ${event.parent}, event ${event.event}${event.overrideRedirect ? ', override' : ''})`)
+
+    if (event.parent === this.screen.root) {
+      await this.wmWindowCreate(event.window, 10, 10, event.x, event.y, event.overrideRedirect)
+    } else if (!this.isOurResource(event.parent)) {
+      const window = this.lookupWindow(event.window)
+      if (!window) {
+        return
+      }
+      this.wmWindowDestroy(window)
+    }
   }
 
-  private handleConfigureRequest(event: ConfigureRequestEvent) {
+  private async handleConfigureRequest(event: ConfigureRequestEvent) {
     const window = this.lookupWindow(event.window)
     if (window === undefined) {
       return
@@ -699,26 +749,82 @@ export class XWindowManager {
 
     this.configureWindow(window.id, values)
     this.wmWindowConfigureFrame(window)
-    this.wmWindowScheduleRepaint(window)
+    await this.wmWindowScheduleRepaint(window)
   }
 
-  private handleConfigureNotify(event: ConfigureNotifyEvent) {
+  private async handleConfigureNotify(event: ConfigureNotifyEvent) {
+    console.log(`XCB_CONFIGURE_NOTIFY (window ${event.window}) ${event.x},${event.y} @ ${event.width}x${event.height}${event.overrideRedirect ? ', override' : ''})`)
+
+    const window = this.lookupWindow(event.window)
+    if (!window) {
+      return
+    }
+
+    window.x = event.x
+    window.y = event.y
+    window.positionDirty = false
+
+    if (window.overrideRedirect) {
+      window.width = event.width
+      window.height = event.height
+      if (window.frameId) {
+        // TODO
+        // frame_resize_inside(window->frame,
+        //   window->width, window->height);
+
+        /* We should check if shsurf has been created because sometimes
+         * there are races
+         * (configure_notify is sent before xserver_map_surface) */
+        if (window.shsurf) {
+          // TODO
+          // xwayland_api->set_xwayland(window->shsurf,
+          //   window->x, window->y);
+        }
+      }
+    }
 // TODO
   }
 
-  private handleDestroyNotify(event: DestroyNotifyEvent) {
+  private async handleDestroyNotify(event: DestroyNotifyEvent) {
+    console.log(`XCB_DESTROY_NOTIFY, win ${event.window}, event ${event.event}${event.window ? ', ours' : ''}`)
+
+    if (this.isOurResource(event.window)) {
+      return
+    }
+
+    const window = this.lookupWindow(event.window)
+    if (!window) {
+      return
+    }
+
+    this.wmWindowDestroy(window)
+  }
+
+  private async handlePropertyNotify(event: PropertyNotifyEvent) {
 // TODO
   }
 
-  private handlePropertyNotify(event: PropertyNotifyEvent) {
-// TODO
+  private async handleClientMessage(event: ClientMessageEvent) {
+    console.log(`XCB_CLIENT_MESSAGE (${await this.getAtomName(event._type)} ${event.data.data32?.[0]} ${event.data.data32?.[1]} ${event.data.data32?.[2]} ${event.data.data32?.[3]} ${event.data.data32?.[4]} win ${event.window})`)
+
+    const window = this.lookupWindow(event.window)
+    /* The window may get created and destroyed before we actually
+     * handle the message.  If it doesn't exist, bail.
+     */
+    if (!window) {
+      return
+    }
+
+    if (event._type === this.atoms._NET_WM_MOVERESIZE) {
+      this.wmWindowHandleMoveResize(window, event)
+    } else if (event._type === this.atoms._NET_WM_STATE) {
+      this.wmWindowHandleState(window, event)
+    } else if (event._type === this.atoms.WL_SURFACE_ID) {
+      this.wmWindowHandleSurfaceId(event)
+    }
   }
 
-  private handleClientMessage(event: ClientMessageEvent) {
-// TODO
-  }
-
-  private handleFocusIn(event: FocusInEvent) {
+  private async handleFocusIn(event: FocusInEvent) {
 // TODO
   }
 
@@ -895,13 +1001,6 @@ export class XWindowManager {
     this.xConnection.changeProperty(PropMode.Replace, window.frameId, this.atoms._XWAYLAND_ALLOW_COMMITS, Atom.CARDINAL, 32, new Uint32Array([allow ? 1 : 0]))
   }
 
-  private setWmState(window: WmWindow, state: number) {
-    this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms.WM_STATE, this.atoms.WM_STATE, 32, new Uint32Array([
-      state,
-      Window.None
-    ]))
-  }
-
   private setNetWmState(window: WmWindow) {
     const property: number[] = []
     if (window.fullscreen) {
@@ -917,7 +1016,11 @@ export class XWindowManager {
     this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms._NET_WM_STATE, Atom.ATOM, 32, new Uint32Array(property))
   }
 
-  private setVirtualDesktop(window: WmWindow, desktop: number) {
+  /*
+   * Sets the _NET_WM_DESKTOP property for the window to 'desktop'.
+   * Passing a <0 desktop value deletes the property.
+   */
+  private wmWindowSetVirtualDesktop(window: WmWindow, desktop: number) {
     if (desktop >= 0) {
       this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms._NET_WM_DESKTOP, Atom.CARDINAL, 32, new Uint32Array([desktop]))
     } else {
@@ -925,7 +1028,7 @@ export class XWindowManager {
     }
   }
 
-  private wmWindowScheduleRepaint(window: WmWindow) {
+  private async wmWindowScheduleRepaint(window: WmWindow) {
     if (window.frameId === Window.None) {
       /* Override-redirect windows go through here, but we
        * cannot assert(window->override_redirect); because
@@ -943,7 +1046,7 @@ export class XWindowManager {
     console.log(`XWM: schedule repaint, win ${window.id}`)
 
     // TODO weston uses an idle event here, check if this might cause problems in our implementation
-    this.wmWindowDoRepaint(window)
+    await this.wmWindowDoRepaint(window)
   }
 
   private wmWindowSetPendingStateOR(window: WmWindow) {
@@ -1060,6 +1163,8 @@ export class XWindowManager {
     const { x, y } = this.wmWindowGetChildPosition(window)
 
     const event = marshallConfigureNotifyEvent({
+      // filled in when marshalled
+      responseType: 0,
       event: window.id,
       window: window.id,
       aboveSibling: Window.None,
@@ -1123,5 +1228,53 @@ export class XWindowManager {
     window.hasAlpha = geometryReply.depth === 32
 
     this.windowHash[id] = window
+  }
+
+  private wmWindowDestroy(window: WmWindow) {
+    if (window.frameId) {
+      this.xConnection.reparentWindow(window.id, this.wmWindow, 0, 0)
+      this.xConnection.destroySubwindows(window.frameId)
+      this.wmWindowSetWmState(window, ICCCM_WITHDRAWN_STATE)
+      this.wmWindowSetVirtualDesktop(window, -1)
+      delete this.windowHash[window.frameId]
+      window.frameId = Window.None
+    }
+
+    // TODO
+    // if (window->frame)
+    //   frame_destroy(window->frame);
+    //
+    // if (window->surface_id)
+    //   wl_list_remove(&window->link);
+    //
+    // if (window->surface)
+    //   wl_list_remove(&window->surface_destroy_listener.link);
+
+    delete this.windowHash[window.id]
+  }
+
+  private wmWindowSetWmState(window: WmWindow, state: number) {
+    this.xConnection.changeProperty(PropMode.Replace, window.id, this.atoms.WM_STATE, this.atoms.WM_STATE, 32, new Uint32Array([state, Window.None]))
+  }
+
+  private async getAtomName(atom: ATOM) {
+    if (atom === Atom.None) {
+      return 'None'
+    }
+
+    const reply = await this.xConnection.getAtomName(atom)
+    return reply.name.chars()
+  }
+
+  private wmWindowHandleMoveResize(window: WmWindow, event: ClientMessageEvent) {
+    // TODO
+  }
+
+  private wmWindowHandleState(window: WmWindow, event: ClientMessageEvent) {
+    // TODO
+  }
+
+  private wmWindowHandleSurfaceId(event: ClientMessageEvent) {
+    // TODO
   }
 }
