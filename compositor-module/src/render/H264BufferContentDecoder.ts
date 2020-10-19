@@ -150,7 +150,7 @@ class H264BufferContentDecoder {
   _onOpaquePictureDecoded({ width, height, data }: { width: number, height: number, data: ArrayBuffer }) {
     const buffer = new Uint8Array(data)
     const frameSerial = this._decodingSerialsQueue.shift()
-    if (!frameSerial) {
+    if (frameSerial === undefined) {
       throw new Error('BUG. Invalid state. No frame serial found onOpaquePictureDecoded.')
     }
     const frameState = this._frameStates[frameSerial]
@@ -170,7 +170,7 @@ class H264BufferContentDecoder {
   _onAlphaPictureDecoded({ width, height, data }: { width: number, height: number, data: ArrayBuffer }) {
     const buffer = new Uint8Array(data)
     const frameSerial = this._decodingAlphaSerialsQueue.shift()
-    if (!frameSerial) {
+    if (frameSerial === undefined) {
       throw new Error('BUG. Invalid state. No frame serial found onAlphaPictureDecoded.')
     }
     const frameState = this._frameStates[frameSerial]

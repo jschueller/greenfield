@@ -583,7 +583,7 @@ export class XWindowManager {
   }
 
   private async handleCreateNotify(event: CreateNotifyEvent) {
-    console.log(`XCB_CREATE_NOTIFY (window ${event.window}, at (${event.x}, ${event.y}), width ${event.width}, height ${event.height}${event.overrideRedirect ? 'override' : ''}${this.isOurResource(event.window) ? 'ours' : ''})`)
+    console.log(`XCB_CREATE_NOTIFY (window ${event.window}, at (${event.x}, ${event.y}), width ${event.width}, height ${event.height}${event.overrideRedirect ? 'override' : ''}${this.isOurResource(event.window) ? ', ours' : ''})`)
     if (this.isOurResource(event.window)) {
       return
     }
