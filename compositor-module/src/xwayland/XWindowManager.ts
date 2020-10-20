@@ -1,3 +1,4 @@
+import { Client } from 'westfield-runtime-server'
 import {
   ATOM,
   Atom,
@@ -19,16 +20,20 @@ import {
   GetPropertyReply,
   getRender,
   getXFixes,
+  InputFocus,
   LeaveNotifyEvent,
   MapNotifyEvent,
   MapRequestEvent,
+  marshallClientMessageEvent,
   marshallConfigureNotifyEvent,
   MotionNotifyEvent,
+  NotifyMode,
   PropertyNotifyEvent,
   PropMode,
   Render,
   ReparentNotifyEvent,
   SCREEN,
+  StackMode,
   Time,
   UnmapNotifyEvent,
   Window,
@@ -39,8 +44,11 @@ import {
 } from 'xtsb'
 import Rect from '../math/Rect'
 import Region from '../Region'
+import Session from '../Session'
 import Surface from '../Surface'
 import { XWaylandConnection } from './XWaylandConnection'
+import XWaylandShell from './XWaylandShell'
+import XWaylandShellSurface from './XWaylandShellSurface'
 
 type ConfigureValueList = Parameters<XConnection['configureWindow']>[1]
 type MwmDecor = number
@@ -221,15 +229,11 @@ interface MotifWmHints {
   status: number
 }
 
-class DesktopXwaylandSurface {
-  // TODO handles
-}
-
 interface WmWindow {
   repaintScheduled: boolean
   hasAlpha: boolean
   surface?: Surface
-  surfaceId?: string
+  surfaceId?: number
   width: number
   height: number
   frameId: WINDOW
@@ -253,7 +257,7 @@ interface WmWindow {
   sizeHints?: SizeHints
   motifHints?: MotifWmHints
   deleteWindow: boolean
-  shsurf?: DesktopXwaylandSurface,
+  shsurf?: XWaylandShellSurface,
   positionDirty: boolean
 }
 
@@ -462,7 +466,7 @@ function createWMWindow(xConnection: XConnection, screen: SCREEN, xwmAtoms: XWMA
 }
 
 export class XWindowManager {
-  static async create(xWaylandConnetion: XWaylandConnection) {
+  static async create(session: Session, xWaylandConnetion: XWaylandConnection, client: Client, xWaylandShell: XWaylandShell) {
     const xConnection = await xWaylandConnetion.setup()
     const xWmResources = await setupResources(xConnection)
     const visualAndColormap = setupVisualAndColormap(xConnection)
@@ -502,7 +506,7 @@ export class XWindowManager {
     const wmWindow = createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
 
 
-    const xWindowManager = new XWindowManager(xConnection, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
+    const xWindowManager = new XWindowManager(session, xConnection, client, xWaylandShell, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
 
     // TODO listen for any event here
     // TODO see weston weston_wm_handle_selection_event
@@ -531,7 +535,10 @@ export class XWindowManager {
     return xWindowManager
   }
 
+  private readonly session: Session
   private readonly xConnection: XConnection
+  private readonly client: Client
+  private readonly xWaylandShell: XWaylandShell
   private readonly atoms: XWMAtoms
   private readonly composite: Composite.Composite
   private readonly render: Render.Render
@@ -543,17 +550,24 @@ export class XWindowManager {
   private readonly screen: SCREEN
   private readonly wmWindow: WINDOW
   private readonly windowHash: { [key: number]: WmWindow } = {}
+  private unpairedWindowList: WmWindow[] = []
 
   private focusWindow?: WmWindow
 
   constructor(
+    session: Session,
     xConnection: XConnection,
+    client: Client,
+    xWaylandShell: XWaylandShell,
     screen: SCREEN,
     { xwmAtoms, composite, render, xFixes, formatRgb, formatRgba }: XWindowManagerResources,
     { visualId, colormap }: VisualAndColormap,
     wmWindow: WINDOW
   ) {
+    this.session = session
     this.xConnection = xConnection
+    this.client = client
+    this.xWaylandShell = xWaylandShell
     this.atoms = xwmAtoms
     this.composite = composite
     this.render = render
@@ -820,12 +834,21 @@ export class XWindowManager {
     } else if (event._type === this.atoms._NET_WM_STATE) {
       this.wmWindowHandleState(window, event)
     } else if (event._type === this.atoms.WL_SURFACE_ID) {
-      this.wmWindowHandleSurfaceId(event)
+      this.wmWindowHandleSurfaceId(window, event)
     }
   }
 
   private async handleFocusIn(event: FocusInEvent) {
-// TODO
+    /* Do not interfere with grabs */
+    if (event.mode === NotifyMode.Grab || event.mode === NotifyMode.Ungrab) {
+      return
+    }
+
+    /* Do not let X clients change the focus behind the compositor's
+     * back. Reset the focus to the old one if it changed. */
+    if (!this.focusWindow || event.event !== this.focusWindow.id) {
+      this.sendFocusWindow(this.focusWindow)
+    }
   }
 
   private isOurResource(id: number) {
@@ -1267,14 +1290,112 @@ export class XWindowManager {
   }
 
   private wmWindowHandleMoveResize(window: WmWindow, event: ClientMessageEvent) {
-    // TODO
+    // TODO check weston weston_wm_window_handle_moveresize window-manager.c
+
+    const detail = event.data.data32?.[2]
+    if (detail === undefined) {
+      return
+    }
+
+    switch (detail) {
+      case _NET_WM_MOVERESIZE_MOVE:
+        // TODO
+        // xwayland_interface->move(window->shsurf, pointer);
+        break
+      case _NET_WM_MOVERESIZE_SIZE_TOPLEFT:
+      case _NET_WM_MOVERESIZE_SIZE_TOP:
+      case _NET_WM_MOVERESIZE_SIZE_TOPRIGHT:
+      case _NET_WM_MOVERESIZE_SIZE_RIGHT:
+      case _NET_WM_MOVERESIZE_SIZE_BOTTOMRIGHT:
+      case _NET_WM_MOVERESIZE_SIZE_BOTTOM:
+      case _NET_WM_MOVERESIZE_SIZE_BOTTOMLEFT:
+      case _NET_WM_MOVERESIZE_SIZE_LEFT:
+        // TODO
+        // xwayland_interface->resize(window->shsurf, pointer, map[detail]);
+        break
+      case _NET_WM_MOVERESIZE_CANCEL:
+        break
+    }
   }
 
   private wmWindowHandleState(window: WmWindow, event: ClientMessageEvent) {
-    // TODO
+    // TODO check weston weston_wm_window_handle_state in window-manager.c
+
   }
 
-  private wmWindowHandleSurfaceId(event: ClientMessageEvent) {
+  private wmWindowHandleSurfaceId(window: WmWindow, event: ClientMessageEvent) {
+    // TODO
+    if (window.surfaceId !== 0) {
+      console.log(`already have surface id for window ${window.id}`)
+      return
+    }
+
+    /* Xwayland will send the wayland requests to create the
+     * wl_surface before sending this client message.  Even so, we
+     * can end up handling the X event before the wayland requests
+     * and thus when we try to look up the surface ID, the surface
+     * hasn't been created yet.  In that case put the window on
+     * the unpaired window list and continue when the surface gets
+     * created. */
+    const id = event.data.data32?.[0]
+    if (id === undefined) {
+      return
+    }
+
+    const resource = this.client.connection.wlObjects[id]
+    if (resource) {
+      window.surfaceId = 0
+      // TODO xserver_map_shell_surface(window,
+      //                                   wl_resource_get_user_data(resource));
+    } else {
+      window.surfaceId = id
+      this.unpairedWindowList.push(window)
+    }
+  }
+
+  private sendFocusWindow(window?: WmWindow) {
+    if (window) {
+      if (window.overrideRedirect) {
+        return
+      }
+
+      const clientMessage = marshallClientMessageEvent({
+        responseType: 0,
+        format: 32,
+        window: window.id,
+        _type: this.atoms.WM_PROTOCOLS,
+        data: {
+          data32: new Uint32Array([
+            this.atoms.WM_TAKE_FOCUS,
+            Time.CurrentTime
+          ])
+        }
+      })
+
+      this.xConnection.sendEvent(0, window.id, EventMask.SubstructureRedirect, new Int8Array(clientMessage))
+      this.xConnection.setInputFocus(InputFocus.PointerRoot, window.id, Time.CurrentTime)
+      this.configureWindow(window.id, { stackMode: StackMode.Above })
+    } else {
+      this.xConnection.setInputFocus(InputFocus.PointerRoot, Window.None, Time.CurrentTime)
+    }
+  }
+
+  // TODO hook up this call to compositor global
+  handleCreateSurface(surface: Surface) {
+    if (surface.resource.client !== this.client) {
+      return
+    }
+
+    console.log(`XWM: create surface ${surface.resource.id}@${surface.resource.client.id}`, surface)
+    const window = this.unpairedWindowList.find(window => window.surfaceId === surface.resource.id)
+    if (window) {
+      this.xServerMapShellSurface(window, surface)
+      window.surfaceId = 0
+      this.unpairedWindowList = this.unpairedWindowList.filter(value => value !== window)
+    }
+  }
+
+  private xServerMapShellSurface(window: WmWindow, surface: Surface) {
     // TODO
   }
 }

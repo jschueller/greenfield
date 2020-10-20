@@ -22,6 +22,7 @@ import RemoteOutOfBandChannel from './RemoteOutOfBandChannel'
 import StreamingBuffer from './remotestreaming/StreamingBuffer'
 import Session from './Session'
 import { XWaylandConnection } from './xwayland/XWaylandConnection'
+import XWaylandShell from './xwayland/XWaylandShell'
 import { XWindowManager } from './xwayland/XWindowManager'
 
 const xwmConnections: { [key: string]: XWaylandConnection } = {}
@@ -256,7 +257,7 @@ class RemoteSocket implements CompositorRemoteSocket {
       xwmConnections[xwmEndpointUrlHref] = xwmConnection
 
       try {
-        XWindowManager.create(xwmConnection)
+        XWindowManager.create(this._session, xwmConnection, client, XWaylandShell.create(this._session))
       } catch (e) {
         console.error('Failed to create X Window Manager.', e)
       }
