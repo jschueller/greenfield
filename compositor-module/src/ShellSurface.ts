@@ -194,7 +194,6 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
           const deltaY = pointer.y - pointerY
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
-          // topLevelView.applyTransformations()
           surface.scheduleRender()
         }
 

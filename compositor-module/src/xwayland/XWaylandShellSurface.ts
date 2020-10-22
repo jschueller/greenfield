@@ -50,7 +50,7 @@ export default class XWaylandShellSurface {
 
   }
 
-  setTitle(title: number): void {
+  setTitle(title: string): void {
   }
 
 
@@ -62,6 +62,6 @@ export default class XWaylandShellSurface {
   }
 
 
-  sePid(pid: number): void {
+  setPid(pid: number): void {
   }
 }

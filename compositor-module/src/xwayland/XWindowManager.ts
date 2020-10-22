@@ -1,3 +1,4 @@
+import { WlObject } from 'westfield-runtime-common'
 import { Client } from 'westfield-runtime-server'
 import {
   ATOM,
@@ -43,6 +44,7 @@ import {
   XFixes
 } from 'xtsb'
 import Rect from '../math/Rect'
+import Output from '../Output'
 import Region from '../Region'
 import Session from '../Session'
 import Surface from '../Surface'
@@ -221,6 +223,17 @@ interface SizeHints {
   winGravity: number
 }
 
+const USPosition = 1
+const USSize = 2
+const PPosition = 4
+const PSize = 8
+const PMinSize = 16
+const PMaxSize = 32
+const PResizeInc = 64
+const PAspect = 128
+const PBaseSize = 256
+const PWinGravity = 512
+
 interface MotifWmHints {
   flags: number,
   functions: number,
@@ -233,6 +246,7 @@ interface WmWindow {
   repaintScheduled: boolean
   hasAlpha: boolean
   surface?: Surface
+  surfaceDestroyListener?: (surfaceResource: WlObject) => void
   surfaceId?: number
   width: number
   height: number
@@ -243,7 +257,6 @@ interface WmWindow {
   mapRequestY: number
   maximizedHorizontal: boolean
   maximizedVertical: boolean
-  fullscreen: boolean
   id: WINDOW
   class: string
   name: string
@@ -259,6 +272,10 @@ interface WmWindow {
   deleteWindow: boolean
   shsurf?: XWaylandShellSurface,
   positionDirty: boolean
+  fullscreen: boolean
+  legacyFullscreenOutput?: Output
+  savedHeight?: number
+  savedWidth?: number
 }
 
 async function setupResources(xConnection: XConnection): Promise<XWindowManagerResources> {
@@ -650,6 +667,11 @@ export class XWindowManager {
     this.setNetWmState(window)
     this.wmWindowSetVirtualDesktop(window, 0)
     // TODO legacy_fullscreen see weston window-manager.c
+    const output = this.legacyFullscreen(window)
+    if (output !== undefined) {
+      window.fullscreen = true
+      window.legacyFullscreenOutput = output
+    }
 
     this.xConnection.mapWindow(event.window)
     this.xConnection.mapWindow(window.frameId)
@@ -1381,7 +1403,7 @@ export class XWindowManager {
   }
 
   // TODO hook up this call to compositor global
-  handleCreateSurface(surface: Surface) {
+  async handleCreateSurface(surface: Surface) {
     if (surface.resource.client !== this.client) {
       return
     }
@@ -1389,13 +1411,157 @@ export class XWindowManager {
     console.log(`XWM: create surface ${surface.resource.id}@${surface.resource.client.id}`, surface)
     const window = this.unpairedWindowList.find(window => window.surfaceId === surface.resource.id)
     if (window) {
-      this.xServerMapShellSurface(window, surface)
+      await this.xServerMapShellSurface(window, surface)
       window.surfaceId = 0
       this.unpairedWindowList = this.unpairedWindowList.filter(value => value !== window)
     }
   }
 
-  private xServerMapShellSurface(window: WmWindow, surface: Surface) {
-    // TODO
+  private async xServerMapShellSurface(window: WmWindow, surface: Surface) {
+    /* This should be necessary only for override-redirected windows,
+     * because otherwise MapRequest handler would have already updated
+     * the properties. However, if X11 clients set properties after
+     * sending MapWindow, here we can still process them. The decorations
+     * have already been drawn once with the old property values, so if the
+     * app changes something affecting decor after MapWindow, we glitch.
+     * We only hit xserver_map_shell_surface() once per MapWindow and
+     * wl_surface, so better ensure we get the window type right.
+     */
+    await this.wmWindowReadProperties(window)
+
+    /* A weston_wm_window may have many different surfaces assigned
+     * throughout its life, so we must make sure to remove the listener
+     * from the old surface signal list. */
+    if (window.surface && window.surfaceDestroyListener) {
+      window.surface.resource.removeDestroyListener(window.surfaceDestroyListener)
+    }
+
+    window.surface = surface
+    window.surfaceDestroyListener = (surfaceResource) => {
+      console.log(`surface for xid ${window.id} destroyed`)
+      /* This should have been freed by the shell.
+	     * Don't try to use it later. */
+      window.shsurf = undefined
+      window.surface = undefined
+    }
+    window.surface.resource.addDestroyListener(window.surfaceDestroyListener)
+
+    window.shsurf = this.xWaylandShell.createSurface(window.surface)
+
+    console.log(`XWM: map shell surface, win ${window.id}, weston_surface ${window.surface}, xwayland surface ${window.shsurf}`)
+
+    if (window.name) {
+      window.shsurf.setTitle(window.name)
+    }
+    if (window.pid > 0) {
+      window.shsurf.setPid(window.pid)
+    }
+
+    if (window.fullscreen && window.legacyFullscreenOutput) {
+      window.savedWidth = window.width
+      window.savedHeight = window.height
+      window.shsurf.setFullscreen(window.legacyFullscreenOutput)
+    } else if (window.overrideRedirect) {
+      window.shsurf.setXwayland(window.x, window.y)
+    } else if (window.transientFor && window.transientFor.surface) {
+      const parent = window.transientFor
+      if (parent.surface) {
+        if (parent.surface && this.wmWindowTypeInactive(window)) {
+          window.shsurf.setTransient(parent.surface, window.x - parent.x, window.y - parent.y)
+        } else {
+          window.shsurf.setToplevel()
+          window.shsurf.setParent(parent.surface)
+        }
+      }
+    } else if (this.wmWindowIsMaximized(window)) {
+      window.shsurf.setMaximized()
+    } else {
+      if (this.wmWindowTypeInactive(window)) {
+        window.shsurf.setXwayland(window.x, window.y)
+      } else if (this.wmWindowIsPositioned(window)) {
+        window.shsurf.setToplevelWithPosition(window.mapRequestX, window.mapRequestY)
+      } else {
+        window.shsurf.setToplevel()
+      }
+    }
+
+    if (window.frameId === Window.None) {
+      this.wmWindowSetPendingStateOR(window)
+    } else {
+      this.wmWindowSetPendingState(window)
+      this.wmWindowSetAllowCommits(window, true)
+      // TODO xcb flush?
+    }
+  }
+
+  private wmWindowTypeInactive(window: WmWindow) {
+    return window.type === this.atoms._NET_WM_WINDOW_TYPE_TOOLTIP ||
+      window.type === this.atoms._NET_WM_WINDOW_TYPE_DROPDOWN_MENU ||
+      window.type === this.atoms._NET_WM_WINDOW_TYPE_DND ||
+      window.type === this.atoms._NET_WM_WINDOW_TYPE_COMBO ||
+      window.type === this.atoms._NET_WM_WINDOW_TYPE_POPUP_MENU ||
+      window.type === this.atoms._NET_WM_WINDOW_TYPE_UTILITY
+  }
+
+  private wmWindowIsMaximized(window: WmWindow) {
+    return window.maximizedHorizontal && window.maximizedVertical
+  }
+
+  private wmWindowIsPositioned(window: WmWindow) {
+    if (window.mapRequestX === Number.MIN_SAFE_INTEGER || window.mapRequestY === Number.MIN_SAFE_INTEGER) {
+      console.log(`XWM warning: win ${window.id} did not see map request`)
+    }
+    return window.mapRequestX !== 0 || window.mapRequestY !== 0
+  }
+
+  private legacyFullscreen(window: WmWindow) {
+    const minmax = PMinSize | PMaxSize
+    return this.session.globals.outputs.find(output => {
+      if (output.canvas.width === window.width && output.canvas.height === window.height && window.overrideRedirect) {
+        return true
+      }
+
+
+      let matchingSize = false
+      const sizeHintsFlags = window.sizeHints?.flags ?? 0
+
+      if (
+        (sizeHintsFlags & (USSize | PSize)) &&
+        window.sizeHints?.width === output.canvas.width &&
+        window.sizeHints.height === output.canvas.height
+      ) {
+        matchingSize = true
+      }
+
+      if (
+        (sizeHintsFlags & minmax) === minmax &&
+        window.sizeHints?.minWidth === output.canvas.width &&
+        window.sizeHints.minHeight === output.canvas.height &&
+        window.sizeHints.maxWidth === output.canvas.width &&
+        window.sizeHints.maxHeight === output.canvas.height
+      ) {
+        matchingSize = true
+      }
+
+      return !!(matchingSize && !window.decorate &&
+        (sizeHintsFlags & (USPosition | PPosition)))
+    })
+  }
+
+  // TODO called by compositor implementation
+  sendPosition(surface: Surface, x: number, y: number) {
+    const window = Object.values(this.windowHash).find(window => window.surface === surface)
+    if (window === undefined) {
+      return
+    }
+
+    /* We use pos_dirty to tell whether a configure message is in flight.
+     * This is needed in case we send two configure events in a very
+     * short time, since window->x/y is set in after a roundtrip, hence
+     * we cannot just check if the current x and y are different. */
+    if (window.x !== x || window.y !== y || window.positionDirty) {
+      window.positionDirty = true
+      this.configureWindow(window.frameId, { x, y })
+    }
   }
 }
