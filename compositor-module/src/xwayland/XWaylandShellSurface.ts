@@ -11,7 +11,7 @@ export default class XWaylandShellSurface {
   private readonly session: Session
   private readonly surface: Surface
 
-  sendConfigure?: (surface: Surface, width: number, height: number) => void
+  sendConfigure?: (width: number, height: number) => void
 
   constructor(session: Session, surface: Surface) {
     this.session = session

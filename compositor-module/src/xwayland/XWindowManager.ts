@@ -1,5 +1,5 @@
 import { WlObject } from 'westfield-runtime-common'
-import { Client } from 'westfield-runtime-server'
+import { Client, WlPointerButtonState } from 'westfield-runtime-server'
 import {
   ATOM,
   Atom,
@@ -36,6 +36,7 @@ import {
   SCREEN,
   StackMode,
   Time,
+  TIMESTAMP,
   UnmapNotifyEvent,
   Window,
   WINDOW,
@@ -51,6 +52,7 @@ import Surface from '../Surface'
 import { XWaylandConnection } from './XWaylandConnection'
 import XWaylandShell from './XWaylandShell'
 import XWaylandShellSurface from './XWaylandShellSurface'
+import { FrameStatus, XWindowFrame } from './XWindowFrame'
 
 type ConfigureValueList = Parameters<XConnection['configureWindow']>[1]
 type MwmDecor = number
@@ -243,6 +245,8 @@ interface MotifWmHints {
 }
 
 interface WmWindow {
+  lastButtonTime: TIMESTAMP
+  didDouble: boolean
   repaintScheduled: boolean
   hasAlpha: boolean
   surface?: Surface
@@ -250,6 +254,7 @@ interface WmWindow {
   surfaceId?: number
   width: number
   height: number
+  frame?: XWindowFrame
   frameId: WINDOW
   x: number
   y: number
@@ -274,8 +279,8 @@ interface WmWindow {
   positionDirty: boolean
   fullscreen: boolean
   legacyFullscreenOutput?: Output
-  savedHeight?: number
-  savedWidth?: number
+  savedHeight: number
+  savedWidth: number
 }
 
 async function setupResources(xConnection: XConnection): Promise<XWindowManagerResources> {
@@ -492,7 +497,7 @@ export class XWindowManager {
     const { composite, xwmAtoms } = xWmResources
     composite.redirectSubwindows(xConnection.setup.roots[0].root, Composite.Redirect.Manual)
 
-    //An immediately invoked lambda that uses function argument destructuring to filter out elements and return them as an array.
+    // An immediately invoked lambda that uses function argument destructuring to filter out elements and return them as an array.
     const supported = (({
                           _NET_WM_MOVERESIZE,
                           _NET_WM_STATE,
@@ -544,7 +549,7 @@ export class XWindowManager {
     xConnection.onConfigureRequestEvent = async event => await xWindowManager.handleConfigureRequest(event)
     xConnection.onConfigureNotifyEvent = async event => await xWindowManager.handleConfigureNotify(event)
     xConnection.onDestroyNotifyEvent = async event => await xWindowManager.handleDestroyNotify(event)
-    // xConnection.onMappingNotifyEvent = event => console.log(JSON.stringify(event))
+    xConnection.onMappingNotifyEvent = async event => console.log('XCB_MAPPING_NOTIFY')
     xConnection.onPropertyNotifyEvent = async event => await xWindowManager.handlePropertyNotify(event)
     xConnection.onClientMessageEvent = async event => await xWindowManager.handleClientMessage(event)
     xConnection.onFocusInEvent = async event => await xWindowManager.handleFocusIn(event)
@@ -570,6 +575,7 @@ export class XWindowManager {
   private unpairedWindowList: WmWindow[] = []
 
   private focusWindow?: WmWindow
+  private doubleClickPeriod: number = 250
 
   constructor(
     session: Session,
@@ -598,6 +604,93 @@ export class XWindowManager {
   }
 
   private async handleButton(event: ButtonPressEvent | ButtonReleaseEvent) {
+    // TODO we want event codes from xtsb
+    const buttonPress = 4
+    console.log(`XCB_BUTTON_${event.responseType === buttonPress ? 'PRESS' : 'RELEASE'} (detail ${event.detail})`)
+
+    const window = this.lookupWindow(event.event)
+
+    if (window === undefined || !window.decorate) {
+      return
+    }
+
+    if (event.detail !== 1 && event.detail !== 2) {
+      return
+    }
+
+    const seat = this.session.globals.seat
+    const pointer = seat.pointer
+
+    const buttonState = event.responseType === buttonPress ?
+      WlPointerButtonState.pressed :
+      WlPointerButtonState.released
+
+    // TODO constants from input.h ?
+    const buttonId = event.detail === 1 ? 0x110 : 0x111
+
+    let doubleClick = false
+    if (buttonState === WlPointerButtonState.pressed) {
+      if ((event.time - window.lastButtonTime) <= this.doubleClickPeriod) {
+        doubleClick = true
+        window.didDouble = true
+      } else {
+        window.didDouble = false
+      }
+    } else if (window.didDouble) {
+      doubleClick = true
+      window.didDouble = false
+    }
+
+    /* Make sure we're looking at the right location.  The frame
+     * could have received a motion event from a pointer from a
+     * different wl_seat, but under X it looks like our core
+     * pointer moved.  Move the frame pointer to the button press
+     * location before deciding what to do. */
+    const windowFrame = window.frame
+    if (windowFrame === undefined) {
+      console.error('BUG. No window frame.')
+      return
+    }
+    let location = windowFrame.pointerMotion(undefined, event.eventX, event.eventY)
+
+    if (doubleClick) {
+      location = windowFrame.doubleClick(undefined, buttonId, buttonState)
+    } else {
+      location = windowFrame.pointerButton(undefined, buttonId, buttonState)
+    }
+
+    const windowFrameStatus = windowFrame.status()
+    if (windowFrameStatus & FrameStatus.FRAME_STATUS_REPAINT) {
+      await this.wmWindowScheduleRepaint(window)
+    }
+
+    if (windowFrameStatus & FrameStatus.FRAME_STATUS_MOVE) {
+      window.shsurf?.move(pointer)
+      windowFrame.statusClear(FrameStatus.FRAME_STATUS_MOVE)
+    }
+
+    if (windowFrameStatus & FrameStatus.FRAME_STATUS_RESIZE) {
+      window.shsurf?.resize(pointer, location)
+      windowFrame.statusClear(FrameStatus.FRAME_STATUS_RESIZE)
+    }
+
+    if (windowFrameStatus & FrameStatus.FRAME_STATUS_CLOSE) {
+      this.wmWindowClose(window, event.time)
+      windowFrame.statusClear(FrameStatus.FRAME_STATUS_CLOSE)
+    }
+
+    if (windowFrameStatus & FrameStatus.FRAME_STATUS_MAXIMIZE) {
+      window.maximizedHorizontal = !window.maximizedHorizontal
+      window.maximizedVertical = !window.maximizedVertical
+      if (this.wmWindowIsMaximized(window)) {
+        window.savedWidth = window.width
+        window.savedHeight = window.height
+        window.shsurf?.setMaximized()
+      } else {
+        this.wmWindowSetToplevel(window)
+      }
+      windowFrame.statusClear(FrameStatus.FRAME_STATUS_MAXIMIZE)
+    }
     // TODO
   }
 
@@ -837,7 +930,17 @@ export class XWindowManager {
   }
 
   private async handlePropertyNotify(event: PropertyNotifyEvent) {
-// TODO
+    const window = this.lookupWindow(event.window)
+
+    if (window === undefined) {
+      return
+    }
+
+    window.propertiesDirty = true
+
+    if (event.atom === this.atoms._NET_WM_NAME || event.atom === Atom.wmName) {
+      await this.wmWindowScheduleRepaint(window)
+    }
   }
 
   private async handleClientMessage(event: ClientMessageEvent) {
@@ -1264,7 +1367,11 @@ export class XWindowManager {
       y,
       positionDirty: false,
       mapRequestX: Number.MIN_SAFE_INTEGER, /* out of range for valid positions */
-      mapRequestY: Number.MAX_SAFE_INTEGER /* out of range for valid positions */
+      mapRequestY: Number.MIN_SAFE_INTEGER, /* out of range for valid positions */
+      didDouble: false,
+      lastButtonTime: 0,
+      savedHeight: 0,
+      savedWidth: 0
     }
 
     const geometryReply = await geometryReplyPromise
@@ -1447,6 +1554,7 @@ export class XWindowManager {
     window.surface.resource.addDestroyListener(window.surfaceDestroyListener)
 
     window.shsurf = this.xWaylandShell.createSurface(window.surface)
+    window.shsurf.sendConfigure = (width, height) => this.sendConfigure(surface, width, height)
 
     console.log(`XWM: map shell surface, win ${window.id}, weston_surface ${window.surface}, xwayland surface ${window.shsurf}`)
 
@@ -1563,5 +1671,45 @@ export class XWindowManager {
       window.positionDirty = true
       this.configureWindow(window.frameId, { x, y })
     }
+  }
+
+  private wmWindowClose(window: WmWindow, time: TIMESTAMP) {
+    // TODO
+    if (window.deleteWindow) {
+      const clientMessageEvent = marshallClientMessageEvent({
+        responseType: 0,
+        format: 32,
+        window: window.id,
+        _type: this.atoms.WM_PROTOCOLS,
+        data: {
+          data32: new Uint32Array([
+            this.atoms.WM_DELETE_WINDOW,
+            time
+          ])
+        }
+      })
+      this.xConnection.sendEvent(0, window.id, EventMask.NoEvent, new Int8Array(clientMessageEvent))
+    } else {
+      // TODO xcb kill client equivalent
+      console.error('should call kill client here')
+    }
+  }
+
+  private wmWindowSetToplevel(window: WmWindow) {
+    window.shsurf?.setToplevel()
+    window.width = window.savedWidth
+    window.height = window.savedHeight
+    if (window.frame) {
+      window.frame.resizeInside(window.width, window.height)
+    }
+    this.wmWindowConfigure(window)
+  }
+
+  private wmWindowConfigure(window: WmWindow) {
+    // TODO
+  }
+
+  private sendConfigure(surface: Surface, width: number, height: number) {
+    // TODO
   }
 }
