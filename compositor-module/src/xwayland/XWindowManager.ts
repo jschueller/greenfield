@@ -52,7 +52,16 @@ import Surface from '../Surface'
 import { XWaylandConnection } from './XWaylandConnection'
 import XWaylandShell from './XWaylandShell'
 import XWaylandShellSurface from './XWaylandShellSurface'
-import { FrameStatus, XWindowFrame } from './XWindowFrame'
+import {
+  canvasXtsbSurfaceCreateWithXRenderFormat,
+  canvasXtsbSurfaceSetSize,
+  FrameButton,
+  frameCreate,
+  FrameStatus,
+  themeCreate, ThemeLocation,
+  XWindowFrame,
+  XWindowTheme
+} from './XWindowFrame'
 
 type ConfigureValueList = Parameters<XConnection['configureWindow']>[1]
 type MwmDecor = number
@@ -245,6 +254,7 @@ interface MotifWmHints {
 }
 
 interface WmWindow {
+  canvasSurface?: HTMLCanvasElement
   lastButtonTime: TIMESTAMP
   didDouble: boolean
   repaintScheduled: boolean
@@ -271,7 +281,7 @@ interface WmWindow {
   machine: string
   propertiesDirty: boolean
   overrideRedirect: boolean
-  decorate?: MwmDecor
+  decorate: MwmDecor
   sizeHints?: SizeHints
   motifHints?: MotifWmHints
   deleteWindow: boolean
@@ -573,6 +583,8 @@ export class XWindowManager {
   private readonly wmWindow: WINDOW
   private readonly windowHash: { [key: number]: WmWindow } = {}
   private unpairedWindowList: WmWindow[] = []
+  private readonly theme: XWindowTheme = themeCreate()
+
 
   private focusWindow?: WmWindow
   private doubleClickPeriod: number = 250
@@ -687,23 +699,58 @@ export class XWindowManager {
         window.savedHeight = window.height
         window.shsurf?.setMaximized()
       } else {
-        this.wmWindowSetToplevel(window)
+        await this.wmWindowSetToplevel(window)
       }
       windowFrame.statusClear(FrameStatus.FRAME_STATUS_MAXIMIZE)
     }
-    // TODO
   }
 
   private async handleEnter(event: EnterNotifyEvent) {
-// TODO
+    const window = this.lookupWindow(event.event)
+
+    if (window === undefined || !window.decorate) {
+      return
+    }
+
+    const location = window.frame?.pointerEnter(undefined, event.eventX, event.eventY)
+    if (window.frame?.status() && (window.frame?.status() & FrameStatus.FRAME_STATUS_REPAINT)) {
+      await this.wmWindowScheduleRepaint(window)
+    }
+
+    const cursor = this.getCursorForLocation(location)
+    this.wmWindowSetCursor(window.frameId, cursor)
   }
 
   private async handleLeave(event: LeaveNotifyEvent) {
-// TODO
+    const window = this.lookupWindow(event.event)
+
+    if (window === undefined || !window.decorate) {
+      return
+    }
+
+    window.frame?.pointerLeave(undefined)
+    if (window.frame?.status() && (window.frame?.status() & FrameStatus.FRAME_STATUS_REPAINT)) {
+      await this.wmWindowScheduleRepaint(window)
+    }
+
+    // TODO
+    // this.wmWindowSetCursor(window.frameId, XWM_CURSOR_LEFT_PTR)
   }
 
   private async handleMotion(event: MotionNotifyEvent) {
-// TODO
+    const window = this.lookupWindow(event.event)
+
+    if (window === undefined || !window.decorate) {
+      return
+    }
+
+    const location = window.frame?.pointerMotion(undefined, event.eventX, event.eventX)
+    if (window.frame?.status() && (window.frame?.status() & FrameStatus.FRAME_STATUS_REPAINT)) {
+      await this.wmWindowScheduleRepaint(window)
+    }
+
+    const cursor = this.getCursorForLocation(location)
+    this.wmWindowSetCursor(window.frameId, cursor)
   }
 
   private async handleCreateNotify(event: CreateNotifyEvent) {
@@ -747,7 +794,7 @@ export class XWindowManager {
     window.mapRequestY = window.y
 
     if (window.frameId === Window.None) {
-      this.createFrame(window) /* sets frame_id */
+      this.wmWindowCreateFrame(window) /* sets frame_id */
     }
     if (window.frameId === Window.None) {
       throw new Error('Assertion failed. X window should have a parent window.')
@@ -759,7 +806,6 @@ export class XWindowManager {
     this.wmWindowSetWmState(window, ICCCM_NORMAL_STATE)
     this.setNetWmState(window)
     this.wmWindowSetVirtualDesktop(window, 0)
-    // TODO legacy_fullscreen see weston window-manager.c
     const output = this.legacyFullscreen(window)
     if (output !== undefined) {
       window.fullscreen = true
@@ -858,7 +904,7 @@ export class XWindowManager {
 
     if (window.frameId) {
       this.wmWindowSetAllowCommits(window, false)
-      this.frameResizeInside(window, window.width, window.height)
+      window.frame?.resizeInside(window.width, window.height)
     }
 
     const { x, y } = this.wmWindowGetChildPosition(window)
@@ -897,21 +943,16 @@ export class XWindowManager {
       window.width = event.width
       window.height = event.height
       if (window.frameId) {
-        // TODO
-        // frame_resize_inside(window->frame,
-        //   window->width, window->height);
+        window.frame?.resizeInside(window.width, window.height)
 
         /* We should check if shsurf has been created because sometimes
          * there are races
          * (configure_notify is sent before xserver_map_surface) */
         if (window.shsurf) {
-          // TODO
-          // xwayland_api->set_xwayland(window->shsurf,
-          //   window->x, window->y);
+          window.shsurf.setXwayland(window.x, window.y)
         }
       }
     }
-// TODO
   }
 
   private async handleDestroyNotify(event: DestroyNotifyEvent) {
@@ -1085,9 +1126,16 @@ export class XWindowManager {
         }))
   }
 
-  private createFrame(window: WmWindow) {
-    // TODO paint a nice window bar using canvas2d
-    // TODO see weston window-manager.c weston_wm_window_create_frame for more implementation details
+  private wmWindowCreateFrame(window: WmWindow) {
+    let buttons = FrameButton.FRAME_BUTTON_CLOSE
+
+    if (window.decorate & MWM_DECOR_MAXIMIZE) {
+      buttons |= FrameButton.FRAME_BUTTON_MAXIMIZE
+    }
+
+    window.frame = frameCreate(this.theme, window.width, window.height, buttons, window.name)
+
+    window.frame?.resizeInside(window.width, window.height)
 
     const { width, height } = this.wmWindowGetFrameSize(window)
     const { x, y } = this.wmWindowGetChildPosition(window)
@@ -1121,6 +1169,8 @@ export class XWindowManager {
     this.xConnection.reparentWindow(window.id, window.frameId, x, y)
 
     this.configureWindow(window.id, { borderWidth: 0 })
+
+    window.canvasSurface = canvasXtsbSurfaceCreateWithXRenderFormat(this.xConnection, this.screen, window.frameId, this.formatRgba, width, height)
 
     this.windowHash[window.frameId] = window
   }
@@ -1216,20 +1266,31 @@ export class XWindowManager {
     }
   }
 
-  private wmWindowGetChildPosition(window: WmWindow) {
+  private wmWindowGetChildPosition(window: WmWindow): { x: number, y: number } {
     if (window.fullscreen) {
       return { x: 0, y: 0 }
-    } else {
-      return { x: 0, y: topBarHeight }
     }
+    if (window.decorate && window.frame) {
+      return window.frame.interior()
+    }
+
+    return { x: this.theme.margin, y: this.theme.margin }
   }
 
 
-  private wmWindowGetFrameSize(window: WmWindow) {
-    const width = window.width
-    const height = window.height + topBarHeight
+  private wmWindowGetFrameSize(window: WmWindow): { width: number, height: number } {
 
-    return { width, height }
+    if (window.fullscreen) {
+      return { width: window.width, height: window.height }
+    }
+    if (window.decorate && window.frame) {
+      return { width: window.frame.width(), height: window.frame.height() }
+    }
+
+    return {
+      width: window.width + this.theme.margin * 2,
+      height: window.height + this.theme.margin * 2
+    }
   }
 
   private async wmWindowDoRepaint(window: WmWindow) {
@@ -1242,20 +1303,26 @@ export class XWindowManager {
   }
 
   private wmWindowDrawDecorations(window: WmWindow) {
-    // TODO
+
+    const { width, height } = this.wmWindowGetFrameSize(window)
+    canvasXtsbSurfaceSetSize(window.canvasSurface, width, height)
+
     let how: string
     if (window.fullscreen) {
       how = 'fullscreen'
       /* nothing */
     } else if (window.decorate) {
       how = 'decorate'
-      // TODO paint title in top bar
+      window.frame?.setTitle(window.name)
+      window.frame?.repaint()
     } else {
       how = 'shadow'
       // TODO render shadow
     }
 
     console.log(`XWM: draw decoration, win ${window.id}, ${how}`)
+
+    // TODO flush paint?
   }
 
   private wmWindowSetPendingState(window: WmWindow) {
@@ -1280,12 +1347,12 @@ export class XWindowManager {
     let inputY: number
     let inputW: number
     let inputH: number
-    if (window.decorate && !window.fullscreen) {
-      // TODO grt frame_input_rect, see weston window-manager.c
+    if (window.decorate && !window.fullscreen && window.frame) {
+      const { x, y, width, height } = window.frame?.inputRect()
       inputX = x
       inputY = y
       inputW = width
-      inputH = topBarHeight
+      inputH = height
     } else {
       inputX = x
       inputY = y
@@ -1298,12 +1365,10 @@ export class XWindowManager {
     Region.fini(window.surface.pendingInputRegion)
     Region.initRect(window.surface.pendingInputRegion, Rect.create(inputX, inputY, inputW, inputH))
 
-    // TODO xwayland_interface->set_window_geometry(window->shsurf,
-    //                                             input_x, input_y,
-    //                                             input_w, input_h);
+    window.shsurf?.setWindowGeometry(inputX, inputY, inputW, inputH)
 
     if (window.name) {
-      // TODO xwayland_interface->set_title(window->shsurf, window->name);
+      window.shsurf?.setTitle(window.name)
     }
   }
 
@@ -1324,10 +1389,6 @@ export class XWindowManager {
       overrideRedirect: 0
     })
     this.xConnection.sendEvent(0, window.id, EventMask.StructureNotify, new Int8Array(event))
-  }
-
-  private frameResizeInside(window: WmWindow, width: number, height: number) {
-    // TODO resize parent frame so it has the size of the window?
   }
 
   private wmWindowConfigureFrame(window: WmWindow) {
@@ -1383,6 +1444,11 @@ export class XWindowManager {
   }
 
   private wmWindowDestroy(window: WmWindow) {
+    // TODO remove configure source event listener
+    // TODO remove repaint source event listener
+    // TODO destroy canvas surface
+    // window.canvasSurface
+
     if (window.frameId) {
       this.xConnection.reparentWindow(window.id, this.wmWindow, 0, 0)
       this.xConnection.destroySubwindows(window.frameId)
@@ -1392,15 +1458,17 @@ export class XWindowManager {
       window.frameId = Window.None
     }
 
-    // TODO
-    // if (window->frame)
-    //   frame_destroy(window->frame);
-    //
-    // if (window->surface_id)
-    //   wl_list_remove(&window->link);
-    //
-    // if (window->surface)
-    //   wl_list_remove(&window->surface_destroy_listener.link);
+    if (window.frame) {
+      window.frame.destroy()
+    }
+
+    if (window.surfaceId) {
+      this.unpairedWindowList = this.unpairedWindowList.filter(value => value !== window)
+    }
+
+    if (window.surface && window.surfaceDestroyListener) {
+      window.surface.resource.removeDestroyListener(window.surfaceDestroyListener)
+    }
 
     delete this.windowHash[window.id]
   }
@@ -1516,6 +1584,7 @@ export class XWindowManager {
     }
 
     console.log(`XWM: create surface ${surface.resource.id}@${surface.resource.client.id}`, surface)
+
     const window = this.unpairedWindowList.find(window => window.surfaceId === surface.resource.id)
     if (window) {
       await this.xServerMapShellSurface(window, surface)
@@ -1554,7 +1623,7 @@ export class XWindowManager {
     window.surface.resource.addDestroyListener(window.surfaceDestroyListener)
 
     window.shsurf = this.xWaylandShell.createSurface(window.surface)
-    window.shsurf.sendConfigure = (width, height) => this.sendConfigure(surface, width, height)
+    window.shsurf.sendConfigure = async (width, height) => await this.sendConfigure(window, width, height)
 
     console.log(`XWM: map shell surface, win ${window.id}, weston_surface ${window.surface}, xwayland surface ${window.shsurf}`)
 
@@ -1674,7 +1743,6 @@ export class XWindowManager {
   }
 
   private wmWindowClose(window: WmWindow, time: TIMESTAMP) {
-    // TODO
     if (window.deleteWindow) {
       const clientMessageEvent = marshallClientMessageEvent({
         responseType: 0,
@@ -1695,21 +1763,82 @@ export class XWindowManager {
     }
   }
 
-  private wmWindowSetToplevel(window: WmWindow) {
+  private async wmWindowSetToplevel(window: WmWindow) {
     window.shsurf?.setToplevel()
     window.width = window.savedWidth
     window.height = window.savedHeight
     if (window.frame) {
       window.frame.resizeInside(window.width, window.height)
     }
-    this.wmWindowConfigure(window)
+    await this.wmWindowConfigure(window)
   }
 
-  private wmWindowConfigure(window: WmWindow) {
+  private async wmWindowConfigure(window: WmWindow) {
+    // TODO configure listener?
+    // if (window->configure_source) {
+    //   wl_event_source_remove(window->configure_source);
+    //   window->configure_source = NULL;
+    // }
+
+    this.wmWindowSetAllowCommits(window, false)
+
+    const { x, y } = this.wmWindowGetChildPosition(window)
+    this.configureWindow(window.id, {
+      x,
+      y,
+      width: window.width,
+      height: window.height
+    })
+
+    this.wmWindowConfigureFrame(window)
+    await this.wmWindowScheduleRepaint(window)
+  }
+
+  private async sendConfigure(window: WmWindow, width: number, height: number) {
+    // TODO
+    let newWidth, newHeight
+    let vborder, hborder
+
+    if (window.decorate && !window.fullscreen) {
+      hborder = 2 * this.theme.width
+      vborder = this.theme.titlebarHeight + this.theme.width
+    } else {
+      hborder = 0
+      vborder = 0
+    }
+
+    if (width > hborder) {
+      newWidth = width - hborder
+    } else {
+      newWidth = 1
+    }
+
+    if (height > vborder) {
+      newHeight = height - vborder
+    } else {
+      newHeight = 1
+    }
+
+    if (window.width !== newWidth || window.height !== newHeight) {
+      window.width = newWidth
+      window.height = newHeight
+
+      window.frame?.resizeInside(window.width, window.height)
+    }
+
+    // TODO?
+    // if(window.configureSource) {
+    //    return
+    // }
+
+    await this.wmWindowConfigure(window)
+  }
+
+  private getCursorForLocation(location: ThemeLocation | undefined): number {
     // TODO
   }
 
-  private sendConfigure(surface: Surface, width: number, height: number) {
+  private wmWindowSetCursor(frameId: WINDOW, cursor: number) {
     // TODO
   }
 }

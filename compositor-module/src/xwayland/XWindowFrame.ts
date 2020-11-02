@@ -1,4 +1,6 @@
 import { WlPointerButtonState } from 'westfield-runtime-server'
+import { SCREEN, WINDOW, XConnection } from 'xtsb'
+import { PICTFORMINFO } from 'xtsb/dist/types/xcbRender'
 import Pointer from '../Pointer'
 
 // TODO what to with these implementations?
@@ -31,6 +33,14 @@ export enum ThemeLocation {
   THEME_LOCATION_CLIENT_AREA = 18,
 }
 
+export enum FrameButton {
+  FRAME_BUTTON_NONE = 0,
+  FRAME_BUTTON_CLOSE = 0x1,
+  FRAME_BUTTON_MAXIMIZE = 0x2,
+  FRAME_BUTTON_MINIMIZE = 0x4,
+  FRAME_BUTTON_ALL = 0x7
+}
+
 export interface XWindowFrame {
   pointerMotion(pointer: Pointer | undefined, x: number, y: number): ThemeLocation
 
@@ -43,5 +53,52 @@ export interface XWindowFrame {
   statusClear(frameStatus: FrameStatus): void
 
   resizeInside(width: number, height: number): void
+
+  destroy(): void
+
+  resizeInside(width: number, height: number): void
+
+  width(): number,
+
+  height(): number
+
+  interior(width?: number, height?: number): { x: number; y: number }
+
+  setTitle(title: string): void
+
+  repaint(): void
+
+  inputRect(): { x: number, y: number, width: number, height: number }
+
+  pointerEnter(pointer: Pointer | undefined, x: number, y: number): ThemeLocation
+
+  pointerLeave(pointer: Pointer | undefined): void
 }
 
+export interface XWindowTheme {
+  activeFrame: HTMLCanvasElement,
+  inactiveFrame: HTMLCanvasElement,
+  shadow: HTMLCanvasElement,
+  frameRadius: number,
+  margin: number,
+  width: number,
+  titlebarHeight: number
+}
+
+export function themeCreate(): XWindowTheme {
+
+}
+
+export function themeDestroy(theme: XWindowTheme) {
+}
+
+export function frameCreate(theme: XWindowTheme, width: number, height: number, buttons: number, title: string, icon?: HTMLCanvasElement): XWindowFrame {
+
+}
+
+export function canvasXtsbSurfaceCreateWithXRenderFormat(connetion: XConnection, screen: SCREEN, frameId: WINDOW, formatRgba: PICTFORMINFO, width: number, height: number): HTMLCanvasElement {
+}
+
+export function canvasXtsbSurfaceSetSize(canvas: HTMLCanvasElement | undefined, width: number, height: number): void {
+
+}
