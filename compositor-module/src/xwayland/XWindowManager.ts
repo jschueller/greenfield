@@ -13,6 +13,7 @@ import {
   ConfigureRequestEvent,
   ConfigWindow,
   CreateNotifyEvent,
+  Cursor,
   DestroyNotifyEvent,
   EnterNotifyEvent,
   EventMask,
@@ -21,6 +22,7 @@ import {
   GetPropertyReply,
   getRender,
   getXFixes,
+  ImageFormat,
   InputFocus,
   LeaveNotifyEvent,
   MapNotifyEvent,
@@ -44,6 +46,15 @@ import {
   XConnection,
   XFixes
 } from 'xtsb'
+import eResize from '../assets/e-resize.png'
+import leftPtr from '../assets/left_ptr.png'
+import nResize from '../assets/n-resize.png'
+import neResize from '../assets/ne-resize.png'
+import nwResize from '../assets/nw-resize.png'
+import sResize from '../assets/s-resize.png'
+import seResize from '../assets/se-resize.png'
+import swResize from '../assets/sw-resize.png'
+import wResize from '../assets/w-resize.png'
 import Rect from '../math/Rect'
 import Output from '../Output'
 import Region from '../Region'
@@ -58,7 +69,8 @@ import {
   FrameButton,
   frameCreate,
   FrameStatus,
-  themeCreate, ThemeLocation,
+  themeCreate,
+  ThemeLocation,
   XWindowFrame,
   XWindowTheme
 } from './XWindowFrame'
@@ -253,6 +265,30 @@ interface MotifWmHints {
   status: number
 }
 
+enum CursorType {
+  XWM_CURSOR_TOP,
+  XWM_CURSOR_BOTTOM,
+  XWM_CURSOR_LEFT,
+  XWM_CURSOR_RIGHT,
+  XWM_CURSOR_TOP_LEFT,
+  XWM_CURSOR_TOP_RIGHT,
+  XWM_CURSOR_BOTTOM_LEFT,
+  XWM_CURSOR_BOTTOM_RIGHT,
+  XWM_CURSOR_LEFT_PTR,
+}
+
+const cursorImageNames = {
+  [CursorType.XWM_CURSOR_BOTTOM]: { url: sResize, xhot: 15, yhot: 27 },
+  [CursorType.XWM_CURSOR_LEFT_PTR]: { url: leftPtr, xhot: 3, yhot: 2 },
+  [CursorType.XWM_CURSOR_BOTTOM_LEFT]: { url: swResize, xhot: 6, yhot: 27 },
+  [CursorType.XWM_CURSOR_BOTTOM_RIGHT]: { url: seResize, xhot: 27, yhot: 27 },
+  [CursorType.XWM_CURSOR_LEFT]: { url: wResize, xhot: 6, yhot: 15 },
+  [CursorType.XWM_CURSOR_RIGHT]: { url: eResize, xhot: 27, yhot: 15 },
+  [CursorType.XWM_CURSOR_TOP]: { url: nResize, xhot: 16, yhot: 6 },
+  [CursorType.XWM_CURSOR_TOP_LEFT]: { url: nwResize, xhot: 6, yhot: 6 },
+  [CursorType.XWM_CURSOR_TOP_RIGHT]: { url: neResize, xhot: 27, yhot: 6 }
+} as const
+
 interface WmWindow {
   canvasSurface?: HTMLCanvasElement
   lastButtonTime: TIMESTAMP
@@ -440,10 +476,6 @@ function dndInit() {
   // TODO see weston's dnd.c
 }
 
-function createCursor() {
-  // TODO see weston's window-manager.c
-}
-
 function setNetActiveWindow(xConnection: XConnection, screen: SCREEN, xwmAtoms: XWMAtoms, window: WINDOW) {
   xConnection.changeProperty(PropMode.Replace, screen.root, xwmAtoms._NET_ACTIVE_WINDOW, xwmAtoms.WINDOW, 32, new Uint32Array([window]))
 }
@@ -533,12 +565,14 @@ export class XWindowManager {
     // TODO
     dndInit()
     // TODO
-    createCursor()
+
 
     const wmWindow = createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
 
 
     const xWindowManager = new XWindowManager(session, xConnection, client, xWaylandShell, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
+    await xWindowManager.createCursors()
+    xWindowManager.wmWindowSetCursor(xWindowManager.screen.root, CursorType.XWM_CURSOR_LEFT_PTR)
 
     // TODO listen for any event here
     // TODO see weston weston_wm_handle_selection_event
@@ -585,6 +619,19 @@ export class XWindowManager {
   private unpairedWindowList: WmWindow[] = []
   private readonly theme: XWindowTheme = themeCreate()
 
+  private cursors: { [key in CursorType]: Cursor } = {
+    [CursorType.XWM_CURSOR_BOTTOM]: Cursor.None,
+    [CursorType.XWM_CURSOR_LEFT_PTR]: Cursor.None,
+    [CursorType.XWM_CURSOR_BOTTOM_LEFT]: Cursor.None,
+    [CursorType.XWM_CURSOR_BOTTOM_RIGHT]: Cursor.None,
+    [CursorType.XWM_CURSOR_LEFT]: Cursor.None,
+    [CursorType.XWM_CURSOR_RIGHT]: Cursor.None,
+    [CursorType.XWM_CURSOR_TOP]: Cursor.None,
+    [CursorType.XWM_CURSOR_TOP_LEFT]: Cursor.None,
+    [CursorType.XWM_CURSOR_TOP_RIGHT]: Cursor.None
+  }
+  private lastCursor: CursorType = -1
+
 
   private focusWindow?: WmWindow
   private doubleClickPeriod: number = 250
@@ -614,6 +661,13 @@ export class XWindowManager {
     this.screen = screen
     this.wmWindow = wmWindow
   }
+
+  async createCursors() {
+    // @ts-ignore
+    await Promise.all(Object.entries(cursorImageNames).map(async ([name, cursorImage]) => this.cursors[name] = await this.loadCursor(cursorImage)))
+    this.lastCursor = -1
+  }
+
 
   private async handleButton(event: ButtonPressEvent | ButtonReleaseEvent) {
     // TODO we want event codes from xtsb
@@ -1834,11 +1888,77 @@ export class XWindowManager {
     await this.wmWindowConfigure(window)
   }
 
-  private getCursorForLocation(location: ThemeLocation | undefined): number {
-    // TODO
+  private getCursorForLocation(location: ThemeLocation | undefined): CursorType {
+    switch (location) {
+      case ThemeLocation.THEME_LOCATION_RESIZING_TOP:
+        return CursorType.XWM_CURSOR_TOP
+      case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM:
+        return CursorType.XWM_CURSOR_BOTTOM
+      case ThemeLocation.THEME_LOCATION_RESIZING_LEFT:
+        return CursorType.XWM_CURSOR_LEFT
+      case ThemeLocation.THEME_LOCATION_RESIZING_RIGHT:
+        return CursorType.XWM_CURSOR_RIGHT
+      case ThemeLocation.THEME_LOCATION_RESIZING_TOP_LEFT:
+        return CursorType.XWM_CURSOR_TOP_LEFT
+      case ThemeLocation.THEME_LOCATION_RESIZING_TOP_RIGHT:
+        return CursorType.XWM_CURSOR_TOP_RIGHT
+      case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_LEFT:
+        return CursorType.XWM_CURSOR_BOTTOM_LEFT
+      case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_RIGHT:
+        return CursorType.XWM_CURSOR_BOTTOM_RIGHT
+      case ThemeLocation.THEME_LOCATION_EXTERIOR:
+      case ThemeLocation.THEME_LOCATION_TITLEBAR:
+      default:
+        return CursorType.XWM_CURSOR_LEFT_PTR
+    }
   }
 
-  private wmWindowSetCursor(frameId: WINDOW, cursor: number) {
-    // TODO
+  private wmWindowSetCursor(windowId: WINDOW, cursor: CursorType) {
+    if (this.lastCursor === cursor) {
+      return
+    }
+
+    this.lastCursor = cursor
+
+    const newCursor = this.cursors[cursor]
+    this.xConnection.changeWindowAttributes(windowId, { cursor: newCursor })
+    // TODO flush?
+  }
+
+  private async loadCursor(cursorImage: typeof cursorImageNames[CursorType]): Promise<Cursor> {
+    // TODO fetch cursor image data over network
+    const response = await fetch(cursorImage.url)
+    // TODO check responses
+    const cursorImageData = await response.blob()
+      .then(value => value.arrayBuffer())
+      .then(value => new Uint8ClampedArray(value))
+
+    const pixels = new ImageData(cursorImageData, 32, 32)
+
+    return this.loadCursorImage({ pixels, xhot: cursorImage.xhot, yhot: cursorImage.yhot })
+  }
+
+  private async loadCursorImage(cursorImage: { xhot: number, yhot: number, pixels: ImageData }): Promise<Cursor> {
+    const pix = this.xConnection.allocateID()
+    this.xConnection.createPixmap(32, pix, this.screen.root, cursorImage.pixels.width, cursorImage.pixels.height)
+
+    const pic = this.xConnection.allocateID()
+    const render = await getRender(this.xConnection)
+    render.createPicture(pic, pix, this.formatRgba.id, {})
+
+    const gc = this.xConnection.allocateID()
+    this.xConnection.createGC(gc, pix, {})
+
+    const stride = cursorImage.pixels.width * 4
+    this.xConnection.putImage(ImageFormat.ZPixmap, pix, gc, cursorImage.pixels.width, cursorImage.pixels.height, 0, 0, 0, 32, stride * cursorImage.pixels.height, new Uint8Array(cursorImage.pixels.data.buffer))
+    this.xConnection.freeGC(gc)
+
+    const cursor = this.xConnection.allocateID()
+    render.createCursor(cursor, pic, cursorImage.xhot, cursorImage.yhot)
+
+    render.freePicture(pic)
+    this.xConnection.freePixmap(pix)
+
+    return cursor
   }
 }

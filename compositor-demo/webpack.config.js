@@ -37,6 +37,16 @@ module.exports = {
         use: 'ts-loader',
         exclude: [/node_modules/]
       },
+      // Handle png images
+      {
+        test: /\.(png)$/,
+        use: [
+          {
+            loader: 'file-loader'
+          }
+        ]
+      },
+      // Handle web assembly
       {
         test: /\.(wasm\.asset)$/i,
         use: [
@@ -48,6 +58,7 @@ module.exports = {
           }
         ]
       },
+      // Handle generic binary data files
       {
         test: /\.(data\.asset)$/i,
         use: [
@@ -56,6 +67,7 @@ module.exports = {
           }
         ]
       },
+      // Handle sources
       {
         test: /\.js$/,
         enforce: 'pre',

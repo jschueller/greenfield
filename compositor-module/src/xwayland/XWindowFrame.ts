@@ -76,9 +76,9 @@ export interface XWindowFrame {
 }
 
 export interface XWindowTheme {
-  activeFrame: HTMLCanvasElement,
-  inactiveFrame: HTMLCanvasElement,
-  shadow: HTMLCanvasElement,
+  activeFrame?: HTMLCanvasElement,
+  inactiveFrame?: HTMLCanvasElement,
+  shadow?: HTMLCanvasElement,
   frameRadius: number,
   margin: number,
   width: number,
@@ -86,19 +86,72 @@ export interface XWindowTheme {
 }
 
 export function themeCreate(): XWindowTheme {
-
+  // TODO
+  return {
+    activeFrame: undefined,
+    frameRadius: 0,
+    inactiveFrame: undefined,
+    margin: 0,
+    shadow: undefined,
+    titlebarHeight: 0,
+    width: 0
+  }
 }
 
 export function themeDestroy(theme: XWindowTheme) {
 }
 
 export function frameCreate(theme: XWindowTheme, width: number, height: number, buttons: number, title: string, icon?: HTMLCanvasElement): XWindowFrame {
+  // TODO make frame a class
+  return {
+    destroy(): void {
+    },
+    doubleClick(undefined: Pointer | undefined, buttonId: number, buttonState: WlPointerButtonState): ThemeLocation {
+      return ThemeLocation.THEME_LOCATION_CLIENT_AREA
+    },
+    height(): number {
+      return 0
+    },
+    inputRect(): { x: number; y: number; width: number; height: number } {
+      return { height: 0, width: 0, x: 0, y: 0 }
+    },
+    interior(width?: number, height?: number): { x: number; y: number } {
+      return { x: 0, y: 0 }
+    },
+    pointerButton(pointer: Pointer | undefined, buttonId: number, buttonState: WlPointerButtonState): ThemeLocation {
+      return ThemeLocation.THEME_LOCATION_CLIENT_AREA
+    },
+    pointerEnter(pointer: Pointer | undefined, x: number, y: number): ThemeLocation {
+      return ThemeLocation.THEME_LOCATION_CLIENT_AREA
+    },
+    pointerLeave(pointer: Pointer | undefined): void {
+    },
+    pointerMotion(pointer: Pointer | undefined, x: number, y: number): ThemeLocation {
+      return ThemeLocation.THEME_LOCATION_CLIENT_AREA
+    },
+    repaint(): void {
+    },
+    resizeInside(width: number, height: number): void {
+    },
+    setTitle(title: string): void {
+    },
+    status(): number {
+      return 0
+    },
+    statusClear(frameStatus: FrameStatus): void {
+    },
+    width(): number {
+      return 0
+    }
 
+  }
 }
 
 export function canvasXtsbSurfaceCreateWithXRenderFormat(connetion: XConnection, screen: SCREEN, frameId: WINDOW, formatRgba: PICTFORMINFO, width: number, height: number): HTMLCanvasElement {
+  // TODO
+  return new HTMLCanvasElement()
 }
 
 export function canvasXtsbSurfaceSetSize(canvas: HTMLCanvasElement | undefined, width: number, height: number): void {
-
+  // TODO
 }
