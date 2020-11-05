@@ -278,15 +278,15 @@ enum CursorType {
 }
 
 const cursorImageNames = {
-  [CursorType.XWM_CURSOR_BOTTOM]: { url: sResize, xhot: 15, yhot: 27 },
-  [CursorType.XWM_CURSOR_LEFT_PTR]: { url: leftPtr, xhot: 3, yhot: 2 },
-  [CursorType.XWM_CURSOR_BOTTOM_LEFT]: { url: swResize, xhot: 6, yhot: 27 },
-  [CursorType.XWM_CURSOR_BOTTOM_RIGHT]: { url: seResize, xhot: 27, yhot: 27 },
-  [CursorType.XWM_CURSOR_LEFT]: { url: wResize, xhot: 6, yhot: 15 },
-  [CursorType.XWM_CURSOR_RIGHT]: { url: eResize, xhot: 27, yhot: 15 },
-  [CursorType.XWM_CURSOR_TOP]: { url: nResize, xhot: 16, yhot: 6 },
-  [CursorType.XWM_CURSOR_TOP_LEFT]: { url: nwResize, xhot: 6, yhot: 6 },
-  [CursorType.XWM_CURSOR_TOP_RIGHT]: { url: neResize, xhot: 27, yhot: 6 }
+  [CursorType.XWM_CURSOR_BOTTOM]: { url: sResize, xhot: 15, yhot: 27, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_LEFT_PTR]: { url: leftPtr, xhot: 3, yhot: 2, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_BOTTOM_LEFT]: { url: swResize, xhot: 6, yhot: 27, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_BOTTOM_RIGHT]: { url: seResize, xhot: 27, yhot: 27, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_LEFT]: { url: wResize, xhot: 6, yhot: 15, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_RIGHT]: { url: eResize, xhot: 27, yhot: 15, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_TOP]: { url: nResize, xhot: 16, yhot: 6, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_TOP_LEFT]: { url: nwResize, xhot: 6, yhot: 6, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_TOP_RIGHT]: { url: neResize, xhot: 27, yhot: 6, width: 32, height: 32 }
 } as const
 
 interface WmWindow {
@@ -1828,12 +1828,6 @@ export class XWindowManager {
   }
 
   private async wmWindowConfigure(window: WmWindow) {
-    // TODO configure listener?
-    // if (window->configure_source) {
-    //   wl_event_source_remove(window->configure_source);
-    //   window->configure_source = NULL;
-    // }
-
     this.wmWindowSetAllowCommits(window, false)
 
     const { x, y } = this.wmWindowGetChildPosition(window)
@@ -1880,11 +1874,6 @@ export class XWindowManager {
       window.frame?.resizeInside(window.width, window.height)
     }
 
-    // TODO?
-    // if(window.configureSource) {
-    //    return
-    // }
-
     await this.wmWindowConfigure(window)
   }
 
@@ -1926,25 +1915,22 @@ export class XWindowManager {
   }
 
   private async loadCursor(cursorImage: typeof cursorImageNames[CursorType]): Promise<Cursor> {
-    // TODO fetch cursor image data over network
+    // TODO check response
     const response = await fetch(cursorImage.url)
-    // TODO check responses
     const cursorImageData = await response.blob()
       .then(value => value.arrayBuffer())
       .then(value => new Uint8ClampedArray(value))
 
-    const pixels = new ImageData(cursorImageData, 32, 32)
-
+    const pixels = new ImageData(cursorImageData, cursorImage.width, cursorImage.height)
     return this.loadCursorImage({ pixels, xhot: cursorImage.xhot, yhot: cursorImage.yhot })
   }
 
-  private async loadCursorImage(cursorImage: { xhot: number, yhot: number, pixels: ImageData }): Promise<Cursor> {
+  private loadCursorImage(cursorImage: { xhot: number, yhot: number, pixels: ImageData }): Cursor {
     const pix = this.xConnection.allocateID()
     this.xConnection.createPixmap(32, pix, this.screen.root, cursorImage.pixels.width, cursorImage.pixels.height)
 
     const pic = this.xConnection.allocateID()
-    const render = await getRender(this.xConnection)
-    render.createPicture(pic, pix, this.formatRgba.id, {})
+    this.render.createPicture(pic, pix, this.formatRgba.id, {})
 
     const gc = this.xConnection.allocateID()
     this.xConnection.createGC(gc, pix, {})
@@ -1954,9 +1940,9 @@ export class XWindowManager {
     this.xConnection.freeGC(gc)
 
     const cursor = this.xConnection.allocateID()
-    render.createCursor(cursor, pic, cursorImage.xhot, cursorImage.yhot)
+    this.render.createCursor(cursor, pic, cursorImage.xhot, cursorImage.yhot)
 
-    render.freePicture(pic)
+    this.render.freePicture(pic)
     this.xConnection.freePixmap(pix)
 
     return cursor
