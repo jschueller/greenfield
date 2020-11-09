@@ -626,8 +626,10 @@ export class XWindowManager {
     const wmWindow = createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
 
     const xWindowManager = new XWindowManager(session, xConnection, client, xWaylandShell, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
-    await xWindowManager.createCursors()
-    xWindowManager.wmWindowSetCursor(xWindowManager.screen.root, CursorType.XWM_CURSOR_LEFT_PTR)
+
+    // FIXME causes connection to hang
+    // await xWindowManager.createCursors()
+    // xWindowManager.wmWindowSetCursor(xWindowManager.screen.root, CursorType.XWM_CURSOR_LEFT_PTR)
 
     // TODO listen for any event here
     // TODO see weston weston_wm_handle_selection_event
@@ -675,6 +677,11 @@ export class XWindowManager {
   private readonly windowHash: { [key: number]: WmWindow } = {}
   private unpairedWindowList: WmWindow[] = []
   private readonly theme: XWindowTheme = themeCreate()
+  private readonly imageDecodingCanvas: HTMLCanvasElement = document.createElement('canvas')
+  private readonly imageDecodingContext: CanvasRenderingContext2D = this.imageDecodingCanvas.getContext('2d', {
+    alpha: true,
+    desynchronized: true
+  })!!
 
   private cursors: { [key in CursorType]: Cursor } = {
     [CursorType.XWM_CURSOR_BOTTOM]: Cursor.None,
@@ -1427,7 +1434,7 @@ export class XWindowManager {
       window.frame?.repaint()
     } else {
       how = 'shadow'
-      // TODO render shadow
+      window.frame?.renderShadow(2, 2, width + 8, height + 8, 64, 64)
     }
 
     console.log(`XWM: draw decoration, win ${window.id}, ${how}`)
@@ -1554,10 +1561,9 @@ export class XWindowManager {
   }
 
   private wmWindowDestroy(window: WmWindow) {
-    // TODO remove configure source idle event listener
-    // TODO remove repaint source idle event listener
-    // TODO destroy canvas surface
-    // window.canvasSurface
+    // TODO remove configure source idle event listener?
+    // TODO remove repaint source idle event listener?
+    // TODO destroy canvas surface?
 
     if (window.frameId) {
       this.xConnection.reparentWindow(window.id, this.wmWindow, 0, 0)
@@ -1655,7 +1661,7 @@ export class XWindowManager {
         return changed
       })()) {
       this.wmWindowSetNetWmState(window)
-      if(window.fullscreen){
+      if (window.fullscreen) {
         window.savedWidth = window.width
         window.savedHeight = window.height
 
@@ -1664,7 +1670,7 @@ export class XWindowManager {
         window.shsurf?.setToplevel()
       }
     } else {
-      if((property1 === this.atoms._NET_WM_STATE_MAXIMIZED_VERT
+      if ((property1 === this.atoms._NET_WM_STATE_MAXIMIZED_VERT
         || property2 === this.atoms._NET_WM_STATE_MAXIMIZED_VERT)
         && action
         && ((): boolean => {
@@ -1674,7 +1680,7 @@ export class XWindowManager {
         })()) {
         this.wmWindowSetNetWmState(window)
       }
-      if((property1 === this.atoms._NET_WM_STATE_MAXIMIZED_HORZ
+      if ((property1 === this.atoms._NET_WM_STATE_MAXIMIZED_HORZ
         || property2 === this.atoms._NET_WM_STATE_MAXIMIZED_HORZ)
         && action
         && ((): boolean => {
@@ -1685,8 +1691,8 @@ export class XWindowManager {
         this.wmWindowSetNetWmState(window)
       }
 
-      if(maximized !== this.wmWindowIsMaximized(window)) {
-        if(this.wmWindowIsMaximized(window)) {
+      if (maximized !== this.wmWindowIsMaximized(window)) {
+        if (this.wmWindowIsMaximized(window)) {
           window.savedWidth = window.width
           window.savedHeight = window.height
 
@@ -1699,7 +1705,7 @@ export class XWindowManager {
   }
 
   private async wmWindowHandleSurfaceId(window: WmWindow, event: ClientMessageEvent) {
-    if (window.surfaceId !== 0) {
+    if (window.surfaceId) {
       console.log(`already have surface id for window ${window.id}`)
       return
     }
@@ -2011,13 +2017,20 @@ export class XWindowManager {
 
   private async loadCursor(cursorImage: typeof cursorImageNames[CursorType]): Promise<Cursor> {
     // TODO check fetch response
-    const response = await fetch(cursorImage.url)
-    const cursorImageData = await response.blob()
+    const { url, yhot, xhot, height, width } = cursorImage
+    const response = await fetch(url)
+    const cursorPNGImageData = await response.blob()
       .then(value => value.arrayBuffer())
       .then(value => new Uint8ClampedArray(value))
 
-    const pixels = new ImageData(cursorImageData, cursorImage.width, cursorImage.height)
-    return this.loadCursorImage({ pixels, xhot: cursorImage.xhot, yhot: cursorImage.yhot })
+    const cursorImageBlob = new Blob([cursorPNGImageData], { type: 'image/png' })
+    const cursorImageBitmap = await createImageBitmap(cursorImageBlob, 0, 0, width, height)
+    this.imageDecodingCanvas.width = width
+    this.imageDecodingCanvas.height = height
+    this.imageDecodingContext.drawImage(cursorImageBitmap, 0, 0)
+    const pixels = this.imageDecodingContext.getImageData(0, 0, width, height)
+
+    return this.loadCursorImage({ pixels, xhot: xhot, yhot: yhot })
   }
 
   private loadCursorImage(cursorImage: { xhot: number, yhot: number, pixels: ImageData }): Cursor {

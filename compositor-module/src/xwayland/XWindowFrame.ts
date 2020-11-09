@@ -68,6 +68,8 @@ export interface XWindowFrame {
 
   repaint(): void
 
+  renderShadow(x: number, y: number, width: number, height: number, margin: number, topMargin: number): void
+
   inputRect(): { x: number, y: number, width: number, height: number }
 
   pointerEnter(pointer: Pointer | undefined, x: number, y: number): ThemeLocation
@@ -142,14 +144,15 @@ export function frameCreate(theme: XWindowTheme, width: number, height: number, 
     },
     width(): number {
       return 0
+    },
+    renderShadow(x: number, y: number, width: number, height: number, margin: number, topMargin: number): void {
     }
-
   }
 }
 
 export function canvasXtsbSurfaceCreateWithXRenderFormat(connetion: XConnection, screen: SCREEN, frameId: WINDOW, formatRgba: PICTFORMINFO, width: number, height: number): HTMLCanvasElement {
   // TODO
-  return new HTMLCanvasElement()
+  return document.createElement('canvas')
 }
 
 export function canvasXtsbSurfaceSetSize(canvas: HTMLCanvasElement | undefined, width: number, height: number): void {

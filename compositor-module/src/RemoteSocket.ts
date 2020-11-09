@@ -25,7 +25,7 @@ import { XWaylandConnection } from './xwayland/XWaylandConnection'
 import XWaylandShell from './xwayland/XWaylandShell'
 import { XWindowManager } from './xwayland/XWindowManager'
 
-const xwmConnections: { [key: string]: XWaylandConnection } = {}
+const xWaylandConnections: { [key: string]: { xWaylandConnection?: XWaylandConnection, client: Client } } = {}
 
 class RemoteSocket implements CompositorRemoteSocket {
   private readonly _session: Session
@@ -41,18 +41,19 @@ class RemoteSocket implements CompositorRemoteSocket {
   }
 
   async ensureXWayland(appEndpointURL: URL) {
-    const xwmEndpointURL = new URL(appEndpointURL.origin)
-    xwmEndpointURL.searchParams.append('xwayland', 'connection')
-    xwmEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
+    const xWaylandBaseURL = new URL(appEndpointURL.origin)
+    xWaylandBaseURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
+    const xWaylandBaseURLhref = xWaylandBaseURL.href
 
-    const xwmEndpointUrlHref = xwmEndpointURL.href
+    if (xWaylandConnections[xWaylandBaseURLhref] === undefined) {
 
-    if (xwmConnections[xwmEndpointUrlHref] === undefined) {
+      xWaylandBaseURL.searchParams.append('xwayland', 'connection')
+      const xWaylandConnectionEndpointURL = xWaylandBaseURL.href
 
       // FIXME add connection lifecycle management
-      const xWaylandWebSocket = new WebSocket(xwmEndpointUrlHref)
-      // TODO we probably want to give this client some special treatment
-      const xWaylandClient = await this.onWebSocket(xWaylandWebSocket)
+      const xWaylandWebSocket = new WebSocket(xWaylandConnectionEndpointURL)
+      const client = await this.onWebSocket(xWaylandWebSocket)
+      xWaylandConnections[xWaylandBaseURLhref] = { client }
     }
   }
 
@@ -240,26 +241,25 @@ class RemoteSocket implements CompositorRemoteSocket {
 
     // listen for XWayland XWM connection request
     outOfBandChannel.setListener(7, async outOfBandMessage => {
-      if (client.connection.closed) {
-        return
-      }
-
       const wmFD = new Uint32Array(outOfBandMessage.buffer, outOfBandMessage.byteOffset)[0]
 
-      const xwmEndpointURL = new URL(new URL(webSocket.url).origin)
-      xwmEndpointURL.searchParams.append('xwmFD', `${wmFD}`)
-      xwmEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
 
-      const xwmEndpointUrlHref = xwmEndpointURL.href
-      // FIXME we probably want some connection lifecycle management here
-      const xwmConnection = await XWaylandConnection.create(new WebSocket(xwmEndpointUrlHref))
-      xwmConnection.onDestroy().then(() => delete xwmConnections[xwmEndpointUrlHref])
-      xwmConnections[xwmEndpointUrlHref] = xwmConnection
+      const xWaylandBaseURL = new URL(new URL(webSocket.url).origin)
+      xWaylandBaseURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
+      const xWaylandBaseURLhref = xWaylandBaseURL.href
 
-      try {
-        XWindowManager.create(this._session, xwmConnection, client, XWaylandShell.create(this._session))
-      } catch (e) {
-        console.error('Failed to create X Window Manager.', e)
+      if (xWaylandConnections[xWaylandBaseURLhref]) {
+        // FIXME we probably want some connection lifecycle management here
+        xWaylandBaseURL.searchParams.append('xwmFD', `${wmFD}`)
+        const xwmConnection = await XWaylandConnection.create(new WebSocket(xWaylandBaseURL.href))
+        xwmConnection.onDestroy().then(() => delete xWaylandConnections[xWaylandBaseURLhref])
+        xWaylandConnections[xWaylandBaseURLhref].xWaylandConnection = xwmConnection
+
+        try {
+          XWindowManager.create(this._session, xwmConnection, xWaylandConnections[xWaylandBaseURLhref].client, XWaylandShell.create(this._session))
+        } catch (e) {
+          console.error('Failed to create X Window Manager.', e)
+        }
       }
     })
   }

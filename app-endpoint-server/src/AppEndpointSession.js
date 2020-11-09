@@ -33,12 +33,8 @@ const { /** @type {WebSocketServer} */Server } = require('ws')
 const { sessionConfig } = require('../config.json5')
 const SurfaceBufferEncoding = require('./SurfaceBufferEncoding')
 const NativeCompositorSession = require('./NativeCompositorSession')
-const WebSocketChannel = require('./WebSocketChannel')
-const NativeClientSession = require('./NativeClientSession')
 const { Endpoint } = require('westfield-endpoint')
 const { nodeFDConnectionSetup } = require('xtsb')
-
-// const { authorizeApplicationLaunch } = require('./CloudFunctions')
 
 class AppEndpointSession {
   /**
