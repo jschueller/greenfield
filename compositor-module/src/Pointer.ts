@@ -17,12 +17,12 @@
 
 import { Fixed } from 'westfield-runtime-common'
 import {
-  WlPointerRequests,
-  WlPointerResource,
   WlPointerAxis,
   WlPointerAxisSource,
   WlPointerButtonState,
   WlPointerError,
+  WlPointerRequests,
+  WlPointerResource,
   WlSurfaceResource
 } from 'westfield-runtime-server'
 import { AxisEvent } from './AxisEvent'
@@ -83,9 +83,9 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
   hotspotY: number = 0
   // @ts-ignore set in create of Seat
   seat: Seat
+  buttonsPressed: number = 0
   private _lineScrollAmount: number = 12
   private _dataDevice: DataDevice
-  private _buttonsPressed: number = 0
   private _grab?: View
   private readonly _popupStack: { popup: WlSurfaceResource, resolve: (value?: (void | PromiseLike<void> | undefined)) => void, promise: Promise<void> }[] = []
   private _cursorSurface?: WlSurfaceResource
@@ -130,11 +130,9 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
     }
   }
 
-  onButtonPress() {
+  onButtonPress(): Promise<ButtonEvent> {
     if (this._buttonPressPromise === undefined) {
-      this._buttonPressPromise = new Promise<ButtonEvent>(resolve => {
-        this._buttonPressResolve = resolve
-      })
+      this._buttonPressPromise = new Promise<ButtonEvent>(resolve => this._buttonPressResolve = resolve)
       this._buttonPressPromise.then(() => {
         this._buttonPressPromise = undefined
         this._buttonPressResolve = undefined
@@ -143,11 +141,9 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
     return this._buttonPressPromise
   }
 
-  onButtonRelease() {
+  onButtonRelease(): Promise<ButtonEvent> {
     if (!this._buttonReleasePromise) {
-      this._buttonReleasePromise = new Promise(resolve => {
-        this._buttonReleaseResolve = resolve
-      })
+      this._buttonReleasePromise = new Promise<ButtonEvent>(resolve => this._buttonReleaseResolve = resolve)
       this._buttonReleasePromise.then(() => {
         this._buttonReleasePromise = undefined
         this._buttonReleaseResolve = undefined
@@ -338,6 +334,10 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
   }
 
   handleMouseUp(event: ButtonEvent) {
+    this.buttonsPressed--
+    if (this.buttonsPressed < 0) {
+      this.buttonsPressed = 0
+    }
     if (this._dataDevice.dndSourceClient) {
       this._dataDevice.onMouseUp()
       return
@@ -374,6 +374,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
   }
 
   handleMouseDown(event: ButtonEvent) {
+    this.buttonsPressed++
     this.handleMouseMove(event)
 
     if (this.focus && this.focus.surface) {

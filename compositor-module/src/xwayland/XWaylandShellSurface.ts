@@ -34,7 +34,7 @@ export default class XWaylandShellSurface {
 
   }
 
-  setFullscreen(output: Output): void {
+  setFullscreen(output?: Output): void {
 
   }
 

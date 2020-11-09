@@ -1,5 +1,5 @@
 import { WlObject } from 'westfield-runtime-common'
-import { Client, WlPointerButtonState } from 'westfield-runtime-server'
+import { Client, WlPointerButtonState, WlSurfaceResource } from 'westfield-runtime-server'
 import {
   ATOM,
   Atom,
@@ -281,7 +281,13 @@ const cursorImageNames = {
   [CursorType.XWM_CURSOR_BOTTOM]: { url: sResize, xhot: 15, yhot: 27, width: 32, height: 32 },
   [CursorType.XWM_CURSOR_LEFT_PTR]: { url: leftPtr, xhot: 3, yhot: 2, width: 32, height: 32 },
   [CursorType.XWM_CURSOR_BOTTOM_LEFT]: { url: swResize, xhot: 6, yhot: 27, width: 32, height: 32 },
-  [CursorType.XWM_CURSOR_BOTTOM_RIGHT]: { url: seResize, xhot: 27, yhot: 27, width: 32, height: 32 },
+  [CursorType.XWM_CURSOR_BOTTOM_RIGHT]: {
+    url: seResize,
+    xhot: 27,
+    yhot: 27,
+    width: 32,
+    height: 32
+  },
   [CursorType.XWM_CURSOR_LEFT]: { url: wResize, xhot: 6, yhot: 15, width: 32, height: 32 },
   [CursorType.XWM_CURSOR_RIGHT]: { url: eResize, xhot: 27, yhot: 15, width: 32, height: 32 },
   [CursorType.XWM_CURSOR_TOP]: { url: nResize, xhot: 16, yhot: 6, width: 32, height: 32 },
@@ -468,6 +474,57 @@ function setupVisualAndColormap(xConnection: XConnection): VisualAndColormap {
   }
 }
 
+const _NET_WM_STATE_REMOVE = 0
+const _NET_WM_STATE_ADD = 1
+const _NET_WM_STATE_TOGGLE = 2
+
+function updateState(action: number, state: number | boolean): { newState: number | boolean, changed: boolean } {
+  let newState, changed
+
+  switch (action) {
+    case _NET_WM_STATE_REMOVE:
+      newState = 0
+      break
+    case _NET_WM_STATE_ADD:
+      newState = 1
+      break
+    case _NET_WM_STATE_TOGGLE:
+      newState = !state
+      break
+    default:
+      return { changed: false, newState: state }
+  }
+
+  changed = (state !== newState)
+
+  return { changed, newState }
+}
+
+function getCursorForLocation(location: ThemeLocation | undefined): CursorType {
+  switch (location) {
+    case ThemeLocation.THEME_LOCATION_RESIZING_TOP:
+      return CursorType.XWM_CURSOR_TOP
+    case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM:
+      return CursorType.XWM_CURSOR_BOTTOM
+    case ThemeLocation.THEME_LOCATION_RESIZING_LEFT:
+      return CursorType.XWM_CURSOR_LEFT
+    case ThemeLocation.THEME_LOCATION_RESIZING_RIGHT:
+      return CursorType.XWM_CURSOR_RIGHT
+    case ThemeLocation.THEME_LOCATION_RESIZING_TOP_LEFT:
+      return CursorType.XWM_CURSOR_TOP_LEFT
+    case ThemeLocation.THEME_LOCATION_RESIZING_TOP_RIGHT:
+      return CursorType.XWM_CURSOR_TOP_RIGHT
+    case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_LEFT:
+      return CursorType.XWM_CURSOR_BOTTOM_LEFT
+    case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_RIGHT:
+      return CursorType.XWM_CURSOR_BOTTOM_RIGHT
+    case ThemeLocation.THEME_LOCATION_EXTERIOR:
+    case ThemeLocation.THEME_LOCATION_TITLEBAR:
+    default:
+      return CursorType.XWM_CURSOR_LEFT_PTR
+  }
+}
+
 function selectionInit() {
   //TODO see weston's selection.c file
 }
@@ -566,9 +623,7 @@ export class XWindowManager {
     dndInit()
     // TODO
 
-
     const wmWindow = createWMWindow(xConnection, xConnection.setup.roots[0], xwmAtoms)
-
 
     const xWindowManager = new XWindowManager(session, xConnection, client, xWaylandShell, xConnection.setup.roots[0], xWmResources, visualAndColormap, wmWindow)
     await xWindowManager.createCursors()
@@ -597,6 +652,8 @@ export class XWindowManager {
     xConnection.onPropertyNotifyEvent = async event => await xWindowManager.handlePropertyNotify(event)
     xConnection.onClientMessageEvent = async event => await xWindowManager.handleClientMessage(event)
     xConnection.onFocusInEvent = async event => await xWindowManager.handleFocusIn(event)
+
+    session.globals.compositor.addSurfaceCreationListener(async surface => await xWindowManager.handleCreateSurface(surface))
 
     return xWindowManager
   }
@@ -771,7 +828,7 @@ export class XWindowManager {
       await this.wmWindowScheduleRepaint(window)
     }
 
-    const cursor = this.getCursorForLocation(location)
+    const cursor = getCursorForLocation(location)
     this.wmWindowSetCursor(window.frameId, cursor)
   }
 
@@ -787,8 +844,7 @@ export class XWindowManager {
       await this.wmWindowScheduleRepaint(window)
     }
 
-    // TODO
-    // this.wmWindowSetCursor(window.frameId, XWM_CURSOR_LEFT_PTR)
+    this.wmWindowSetCursor(window.frameId, CursorType.XWM_CURSOR_LEFT_PTR)
   }
 
   private async handleMotion(event: MotionNotifyEvent) {
@@ -803,7 +859,7 @@ export class XWindowManager {
       await this.wmWindowScheduleRepaint(window)
     }
 
-    const cursor = this.getCursorForLocation(location)
+    const cursor = getCursorForLocation(location)
     this.wmWindowSetCursor(window.frameId, cursor)
   }
 
@@ -858,7 +914,7 @@ export class XWindowManager {
 
     this.wmWindowSetAllowCommits(window, false)
     this.wmWindowSetWmState(window, ICCCM_NORMAL_STATE)
-    this.setNetWmState(window)
+    this.wmWindowSetNetWmState(window)
     this.wmWindowSetVirtualDesktop(window, 0)
     const output = this.legacyFullscreen(window)
     if (output !== undefined) {
@@ -912,8 +968,8 @@ export class XWindowManager {
     if (this.focusWindow === window) {
       this.focusWindow = undefined
     }
-    if (window.surface) {
-      // TODO remove surface destroy listener
+    if (window.surface && window.surfaceDestroyListener) {
+      window.surface.resource.removeDestroyListener(window.surfaceDestroyListener)
     }
     window.surface = undefined
     window.shsurf = undefined
@@ -1054,7 +1110,7 @@ export class XWindowManager {
     } else if (event._type === this.atoms._NET_WM_STATE) {
       this.wmWindowHandleState(window, event)
     } else if (event._type === this.atoms.WL_SURFACE_ID) {
-      this.wmWindowHandleSurfaceId(window, event)
+      await this.wmWindowHandleSurfaceId(window, event)
     }
   }
 
@@ -1253,7 +1309,7 @@ export class XWindowManager {
     this.xConnection.changeProperty(PropMode.Replace, window.frameId, this.atoms._XWAYLAND_ALLOW_COMMITS, Atom.CARDINAL, 32, new Uint32Array([allow ? 1 : 0]))
   }
 
-  private setNetWmState(window: WmWindow) {
+  private wmWindowSetNetWmState(window: WmWindow) {
     const property: number[] = []
     if (window.fullscreen) {
       property.push(this.atoms._NET_WM_STATE_FULLSCREEN)
@@ -1498,8 +1554,8 @@ export class XWindowManager {
   }
 
   private wmWindowDestroy(window: WmWindow) {
-    // TODO remove configure source event listener
-    // TODO remove repaint source event listener
+    // TODO remove configure source idle event listener
+    // TODO remove repaint source idle event listener
     // TODO destroy canvas surface
     // window.canvasSurface
 
@@ -1541,7 +1597,23 @@ export class XWindowManager {
   }
 
   private wmWindowHandleMoveResize(window: WmWindow, event: ClientMessageEvent) {
-    // TODO check weston weston_wm_window_handle_moveresize window-manager.c
+    const map = [
+      ThemeLocation.THEME_LOCATION_RESIZING_TOP_LEFT,
+      ThemeLocation.THEME_LOCATION_RESIZING_TOP,
+      ThemeLocation.THEME_LOCATION_RESIZING_TOP_RIGHT,
+      ThemeLocation.THEME_LOCATION_RESIZING_RIGHT,
+      ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_RIGHT,
+      ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM,
+      ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_LEFT,
+      ThemeLocation.THEME_LOCATION_RESIZING_LEFT
+    ] as const
+
+    const pointer = this.session.globals.seat.pointer
+    if (pointer.buttonsPressed !== 1
+      || pointer.focus === undefined
+      || pointer.focus.surface !== window.surface) {
+      return
+    }
 
     const detail = event.data.data32?.[2]
     if (detail === undefined) {
@@ -1550,8 +1622,7 @@ export class XWindowManager {
 
     switch (detail) {
       case _NET_WM_MOVERESIZE_MOVE:
-        // TODO
-        // xwayland_interface->move(window->shsurf, pointer);
+        window.shsurf?.move(pointer)
         break
       case _NET_WM_MOVERESIZE_SIZE_TOPLEFT:
       case _NET_WM_MOVERESIZE_SIZE_TOP:
@@ -1561,8 +1632,7 @@ export class XWindowManager {
       case _NET_WM_MOVERESIZE_SIZE_BOTTOM:
       case _NET_WM_MOVERESIZE_SIZE_BOTTOMLEFT:
       case _NET_WM_MOVERESIZE_SIZE_LEFT:
-        // TODO
-        // xwayland_interface->resize(window->shsurf, pointer, map[detail]);
+        window.shsurf?.resize(pointer, map[detail])
         break
       case _NET_WM_MOVERESIZE_CANCEL:
         break
@@ -1570,12 +1640,65 @@ export class XWindowManager {
   }
 
   private wmWindowHandleState(window: WmWindow, event: ClientMessageEvent) {
-    // TODO check weston weston_wm_window_handle_state in window-manager.c
+    const maximized = this.wmWindowIsMaximized(window)
 
+    const action = event.data.data32?.[0]
+    const property1 = event.data.data32?.[1]
+    const property2 = event.data.data32?.[2]
+
+    if ((property1 === this.atoms._NET_WM_STATE_FULLSCREEN
+      || property2 === this.atoms._NET_WM_STATE_FULLSCREEN)
+      && action
+      && ((): boolean => {
+        const { changed, newState } = updateState(action, window.fullscreen)
+        window.fullscreen = !!newState
+        return changed
+      })()) {
+      this.wmWindowSetNetWmState(window)
+      if(window.fullscreen){
+        window.savedWidth = window.width
+        window.savedHeight = window.height
+
+        window.shsurf?.setFullscreen()
+      } else {
+        window.shsurf?.setToplevel()
+      }
+    } else {
+      if((property1 === this.atoms._NET_WM_STATE_MAXIMIZED_VERT
+        || property2 === this.atoms._NET_WM_STATE_MAXIMIZED_VERT)
+        && action
+        && ((): boolean => {
+          const { changed, newState } = updateState(action, window.maximizedVertical)
+          window.maximizedVertical = !!newState
+          return changed
+        })()) {
+        this.wmWindowSetNetWmState(window)
+      }
+      if((property1 === this.atoms._NET_WM_STATE_MAXIMIZED_HORZ
+        || property2 === this.atoms._NET_WM_STATE_MAXIMIZED_HORZ)
+        && action
+        && ((): boolean => {
+          const { changed, newState } = updateState(action, window.maximizedHorizontal)
+          window.maximizedHorizontal = !!newState
+          return changed
+        })()) {
+        this.wmWindowSetNetWmState(window)
+      }
+
+      if(maximized !== this.wmWindowIsMaximized(window)) {
+        if(this.wmWindowIsMaximized(window)) {
+          window.savedWidth = window.width
+          window.savedHeight = window.height
+
+          window.shsurf?.setMaximized()
+        } else {
+          window.shsurf?.setToplevel()
+        }
+      }
+    }
   }
 
-  private wmWindowHandleSurfaceId(window: WmWindow, event: ClientMessageEvent) {
-    // TODO
+  private async wmWindowHandleSurfaceId(window: WmWindow, event: ClientMessageEvent) {
     if (window.surfaceId !== 0) {
       console.log(`already have surface id for window ${window.id}`)
       return
@@ -1593,11 +1716,10 @@ export class XWindowManager {
       return
     }
 
-    const resource = this.client.connection.wlObjects[id]
+    const resource = this.client.connection.wlObjects[id] as WlSurfaceResource
     if (resource) {
       window.surfaceId = 0
-      // TODO xserver_map_shell_surface(window,
-      //                                   wl_resource_get_user_data(resource));
+      await this.xServerMapShellSurface(window, resource.implementation as Surface)
     } else {
       window.surfaceId = id
       this.unpairedWindowList.push(window)
@@ -1631,7 +1753,6 @@ export class XWindowManager {
     }
   }
 
-  // TODO hook up this call to compositor global
   async handleCreateSurface(surface: Surface) {
     if (surface.resource.client !== this.client) {
       return
@@ -1843,7 +1964,6 @@ export class XWindowManager {
   }
 
   private async sendConfigure(window: WmWindow, width: number, height: number) {
-    // TODO
     let newWidth, newHeight
     let vborder, hborder
 
@@ -1877,31 +1997,6 @@ export class XWindowManager {
     await this.wmWindowConfigure(window)
   }
 
-  private getCursorForLocation(location: ThemeLocation | undefined): CursorType {
-    switch (location) {
-      case ThemeLocation.THEME_LOCATION_RESIZING_TOP:
-        return CursorType.XWM_CURSOR_TOP
-      case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM:
-        return CursorType.XWM_CURSOR_BOTTOM
-      case ThemeLocation.THEME_LOCATION_RESIZING_LEFT:
-        return CursorType.XWM_CURSOR_LEFT
-      case ThemeLocation.THEME_LOCATION_RESIZING_RIGHT:
-        return CursorType.XWM_CURSOR_RIGHT
-      case ThemeLocation.THEME_LOCATION_RESIZING_TOP_LEFT:
-        return CursorType.XWM_CURSOR_TOP_LEFT
-      case ThemeLocation.THEME_LOCATION_RESIZING_TOP_RIGHT:
-        return CursorType.XWM_CURSOR_TOP_RIGHT
-      case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_LEFT:
-        return CursorType.XWM_CURSOR_BOTTOM_LEFT
-      case ThemeLocation.THEME_LOCATION_RESIZING_BOTTOM_RIGHT:
-        return CursorType.XWM_CURSOR_BOTTOM_RIGHT
-      case ThemeLocation.THEME_LOCATION_EXTERIOR:
-      case ThemeLocation.THEME_LOCATION_TITLEBAR:
-      default:
-        return CursorType.XWM_CURSOR_LEFT_PTR
-    }
-  }
-
   private wmWindowSetCursor(windowId: WINDOW, cursor: CursorType) {
     if (this.lastCursor === cursor) {
       return
@@ -1915,7 +2010,7 @@ export class XWindowManager {
   }
 
   private async loadCursor(cursorImage: typeof cursorImageNames[CursorType]): Promise<Cursor> {
-    // TODO check response
+    // TODO check fetch response
     const response = await fetch(cursorImage.url)
     const cursorImageData = await response.blob()
       .then(value => value.arrayBuffer())

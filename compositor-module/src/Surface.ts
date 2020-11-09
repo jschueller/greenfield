@@ -382,9 +382,7 @@ class Surface implements WlSurfaceRequests {
 
   private _handleDestruction() {
     this.destroyed = true
-    this.views.forEach(view => {
-      view.destroy()
-    })
+    this.views.forEach(view => view.destroy())
     this._h264BufferContentDecoder?.destroy()
   }
 

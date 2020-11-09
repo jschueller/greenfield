@@ -1929,17 +1929,13 @@ westfield-endpoint-generator@^0.3.1:
     uppercamelcase "^3.0.0"
     xml2js "^0.4.23"
 
-westfield-endpoint@0.3.2:
-  version "0.3.2"
-  resolved "https://registry.yarnpkg.com/westfield-endpoint/-/westfield-endpoint-0.3.2.tgz#99e69061e39b8d39918c27f8b06fc538d51814f0"
-  integrity sha512-7c6bzgJCsgypqTlFYvwvGAOPJKhrG5Inmj46s3K9kH6Re7RSs51yQeFDoA6rmUfs37gO+WL0MYKpUDBKGIg4kQ==
-  dependencies:
-    westfield-native "0.3.2"
+"westfield-endpoint@link:../../westfield/server/node/endpoint":
+  version "0.0.0"
+  uid ""
 
-westfield-native@0.3.2:
-  version "0.3.2"
-  resolved "https://registry.yarnpkg.com/westfield-native/-/westfield-native-0.3.2.tgz#dfa2c20f8fc32f7d5af50f6f9b1ce64b9e44b9bb"
-  integrity sha512-tQn1xRjKaDqdmdaAOv1ldXkTRBnCzZ94+W9jRUPIz65dcYsm8kNMwVlqS8nno2cdnJNQq5Bqp7IZAu4S2sSxSQ==
+"westfield-native@link:../../westfield/server/node/endpoint/.../endpoint-native":
+  version "0.0.0"
+  uid ""
 
 which@^2.0.1:
   version "2.0.2"
