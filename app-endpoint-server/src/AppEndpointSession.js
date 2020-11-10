@@ -145,7 +145,8 @@ class AppEndpointSession {
           // TODO call to native code
         })
 
-        webSocket.send(Uint32Array.from([7, wmFd]).buffer)
+        const xWaylandClient = this._nativeCompositorSession.clients.find(value => Endpoint.equalValueExternal(value.nativeClientSession.wlClient, wlClient))
+        xWaylandClient.webSocketChannel.send(Uint32Array.from([7, wmFd]).buffer)
       })
     } else {
       webSocket.close(4501, `[app-endpoint-session: ${this.compositorSessionId}] - XWayland not enabled.`)

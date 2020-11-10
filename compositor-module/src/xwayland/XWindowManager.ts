@@ -1065,9 +1065,7 @@ export class XWindowManager {
         /* We should check if shsurf has been created because sometimes
          * there are races
          * (configure_notify is sent before xserver_map_surface) */
-        if (window.shsurf) {
-          window.shsurf.setXwayland(window.x, window.y)
-        }
+        window.shsurf?.setXwayland(window.x, window.y)
       }
     }
   }
