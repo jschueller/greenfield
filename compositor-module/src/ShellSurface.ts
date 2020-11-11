@@ -287,10 +287,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
     }
   }
 
-  /**
-   * @private
-   */
-  _ensureUserShellSurface() {
+  private _ensureUserShellSurface() {
     if (!this._managed) {
       this._managed = true
       this.wlSurfaceResource.onDestroy().then(() => this.session.userShell.events.destroyUserSurface?.(this.userSurface))
