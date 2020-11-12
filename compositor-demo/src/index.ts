@@ -85,8 +85,8 @@ async function main() {
 
   // Get an HTML5 canvas for use as an output for the compositor. Multiple outputs can be used.
   const canvas: HTMLCanvasElement = document.createElement('canvas')
-  canvas.width = 1024
-  canvas.height = 768
+  canvas.width = 1280
+  canvas.height = 720
   canvas.style.width = `${canvas.width}`
   canvas.style.height = `${canvas.height}`
 
@@ -108,11 +108,14 @@ async function main() {
   webGLURLButton.textContent = 'WebGL URL'
   const reactCanvasKitURLButton: HTMLButtonElement = document.createElement('button')
   reactCanvasKitURLButton.textContent = 'React-CanvasKit URL'
-  const remoteURLButton: HTMLButtonElement = document.createElement('button')
-  remoteURLButton.textContent = 'Remote GTK3-Demo URL'
+  const remoteGtk3URLButton: HTMLButtonElement = document.createElement('button')
+  remoteGtk3URLButton.textContent = 'Remote GTK3-Demo URL'
+  const remoteXtermURLButton: HTMLButtonElement = document.createElement('button')
+  remoteXtermURLButton.textContent = 'Remote XTerm URL'
+
   const urlInput: HTMLInputElement = document.createElement('input')
   urlInput.type = 'text'
-  urlInput.style.width = '445px'
+  urlInput.style.width = '565px'
   const launchButton: HTMLButtonElement = document.createElement('button')
   launchButton.textContent = 'Launch'
 
@@ -120,14 +123,16 @@ async function main() {
   container.appendChild(webShmAppURLButton)
   container.appendChild(webGLURLButton)
   container.appendChild(reactCanvasKitURLButton)
-  container.appendChild(remoteURLButton)
+  container.appendChild(remoteGtk3URLButton)
+  container.appendChild(remoteXtermURLButton)
   container.appendChild(urlInput)
   container.appendChild(launchButton)
 
   webShmAppURLButton.onclick = () => urlInput.value = `${window.location.href}apps/simple-web-shm/app.js`
   webGLURLButton.onclick = () => urlInput.value = `${window.location.href}apps/simple-web-gl/app.js`
   reactCanvasKitURLButton.onclick = () => urlInput.value = `${window.location.href}apps/react-canvaskit/app.js`
-  remoteURLButton.onclick = () => urlInput.value = `ws://localhost:8081?launch=remote-gtk3-demo`
+  remoteGtk3URLButton.onclick = () => urlInput.value = `ws://localhost:8081?launch=remote-gtk3-demo`
+  remoteXtermURLButton.onclick = () => urlInput.value = `ws://localhost:8081?launch=remote-xterm`
 
   launchButton.onclick = () => {
     const urlString = urlInput.value

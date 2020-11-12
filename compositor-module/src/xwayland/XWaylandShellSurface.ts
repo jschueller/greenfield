@@ -4,8 +4,8 @@ import Output from '../Output'
 import Pointer from '../Pointer'
 import Session from '../Session'
 import Surface from '../Surface'
-import SurfaceRole from '../SurfaceRole'
 import { SurfaceState } from '../SurfaceState'
+import { UserShellSurfaceRole } from '../UserShellSurfaceRole'
 
 const SurfaceStates = {
   MAXIMIZED: 'maximized',
@@ -14,7 +14,7 @@ const SurfaceStates = {
   TOP_LEVEL: 'top_level'
 }
 
-export default class XWaylandShellSurface implements SurfaceRole<void> {
+export default class XWaylandShellSurface implements UserShellSurfaceRole<void> {
   static create(session: Session, surface: Surface) {
     const { client, id } = surface.resource
     const userSurface: CompositorSurface = { id: `${id}`, clientId: client.id }
@@ -199,5 +199,21 @@ export default class XWaylandShellSurface implements SurfaceRole<void> {
 
 
   setPid(pid: number): void {
+  }
+
+  requestActive() {
+    if (this._userSurfaceState.active) {
+      return
+    }
+    this._userSurfaceState = { ...this._userSurfaceState, active: true }
+    this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
+  }
+
+  notifyInactive() {
+    if (!this._userSurfaceState.active) {
+      return
+    }
+    this._userSurfaceState = { ...this._userSurfaceState, active: false }
+    this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
   }
 }

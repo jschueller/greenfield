@@ -217,6 +217,9 @@ class AppEndpointSession {
       })
       if (nativeXWayland === undefined) {
         reject(new Error('Failed to setup XWayland.'))
+      } else {
+        const display = Endpoint.getXWaylandDisplay(nativeXWayland)
+        process.env['DISPLAY'] = `:${display}`
       }
     })
   }

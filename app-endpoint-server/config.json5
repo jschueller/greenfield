@@ -49,6 +49,10 @@
         bin: "/usr/bin/gtk3-demo",
         // Arguments passed to the binary
         args: [],
+      },
+      'remote-xterm': {
+        bin: "/usr/bin/xterm",
+        args: [],
       }
     }
   }
