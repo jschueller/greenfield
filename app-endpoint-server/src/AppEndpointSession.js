@@ -17,6 +17,8 @@
 
 'use strict'
 
+const AppEndpointSessionXWayland = require('./AppEndpointSessionXWayland')
+
 const Logger = require('pino')
 const logger = Logger({
   name: `app-endpoint-session-process`,
@@ -33,10 +35,10 @@ const { /** @type {WebSocketServer} */Server } = require('ws')
 const { sessionConfig } = require('../config.json5')
 const SurfaceBufferEncoding = require('./SurfaceBufferEncoding')
 const NativeCompositorSession = require('./NativeCompositorSession')
-const { Endpoint } = require('westfield-endpoint')
-const { nodeFDConnectionSetup } = require('xtsb')
 
 class AppEndpointSession {
+  appEndpointSessionXWayland
+
   /**
    * @param {string}compositorSessionId
    * @return {AppEndpointSession}
@@ -48,7 +50,8 @@ class AppEndpointSession {
       level: (process.env.DEBUG && process.env.DEBUG == true) ? 20 : 30
     })
     const nativeCompositorSession = NativeCompositorSession.create(compositorSessionId)
-    const appEndpointSession = new AppEndpointSession(logger, nativeCompositorSession, compositorSessionId)
+    const appEndpointSessionXWayland = new AppEndpointSessionXWayland(logger, nativeCompositorSession, compositorSessionId)
+    const appEndpointSession = new AppEndpointSession(logger, nativeCompositorSession, compositorSessionId, appEndpointSessionXWayland)
     nativeCompositorSession.onDestroy().then(() => appEndpointSession.destroy())
     logger.info(`Session started.`)
     return appEndpointSession
@@ -58,8 +61,14 @@ class AppEndpointSession {
    * @param logger
    * @param {NativeCompositorSession}nativeCompositorSession
    * @param {string}compositorSessionId
+   * @param {AppEndpointSessionXWayland}appEndpointSessionXWayland
    */
-  constructor (logger, nativeCompositorSession, compositorSessionId) {
+  constructor (logger, nativeCompositorSession, compositorSessionId, appEndpointSessionXWayland) {
+    /**
+     * @type {AppEndpointSessionXWayland}
+     * @private
+     */
+    this._appEndpointSessionXWayland = appEndpointSessionXWayland
     /**
      * @private
      */
@@ -94,6 +103,7 @@ class AppEndpointSession {
 
   destroy () {
     this._logger.info(`Session destroyed.`)
+    this._appEndpointSessionXWayland.destroy()
     this._destroyResolve()
   }
 
@@ -113,19 +123,11 @@ class AppEndpointSession {
    */
   async createXWMConnection (webSocket, query) {
     const wmFD = Number.parseInt(query['xwmFD'])
-    // initialize an X11 client connection, used by the compositor's X11 window manager.
-    const { xConnectionSocket, setup } = await nodeFDConnectionSetup(wmFD)()
-    const setupJSON = JSON.stringify(setup)
-    webSocket.send(setupJSON)
-
-    webSocket.binaryType = 'arraybuffer'
-    webSocket.onmessage = ev => xConnectionSocket.write(Buffer.from(ev.data))
-    webSocket.onclose = _ => xConnectionSocket.close()
-    webSocket.onerror = ev => {
-      console.error('XConnection websocket error: ' + ev)
-      xConnectionSocket.close()
+    if (sessionConfig.xWayland) {
+      await this._appEndpointSessionXWayland.createXWMConnection(webSocket, wmFD)
+    } else {
+      webSocket.close(4501, `[app-endpoint-session: ${this.compositorSessionId}] - XWayland not enabled.`)
     }
-    xConnectionSocket.onData = data => webSocket.send(data)
   }
 
   /**
@@ -133,21 +135,7 @@ class AppEndpointSession {
    */
   async createXConnection (webSocket) {
     if (sessionConfig.xWayland) {
-      this._nativeCompositorSession.childSpawned(webSocket)
-
-      // Will only continue once an XWayland server is launching which is triggered by an X client trying to connect.
-      const { wmFd, wlClient } = await this._listenXWayland()
-
-      // SIGUSR1 is raised once Xwayland is done initializing.
-      process.on('SIGUSR1', () => {
-        this._logger.info(`[app-endpoint-session: ${this.compositorSessionId}] - XWayland started.`)
-        process.on('SIGCHLD', () => {
-          // TODO call to native code
-        })
-
-        const xWaylandClient = this._nativeCompositorSession.clients.find(value => Endpoint.equalValueExternal(value.nativeClientSession.wlClient, wlClient))
-        xWaylandClient.webSocketChannel.send(Uint32Array.from([7, wmFd]).buffer)
-      })
+      await this._appEndpointSessionXWayland.createXConnection(webSocket)
     } else {
       webSocket.close(4501, `[app-endpoint-session: ${this.compositorSessionId}] - XWayland not enabled.`)
     }
@@ -201,27 +189,6 @@ class AppEndpointSession {
       this._logger.error(`[app-endpoint-session: ${this.compositorSessionId}] - Application: ${applicationId} not found.`)
       webSocket.close(4404, `[app-endpoint-session: ${this.compositorSessionId}] - Application: ${applicationId} not found.`)
     }
-  }
-
-  /**
-   * @return {Promise<{wmFd: number, wlClient: Object}>}
-   * @private
-   */
-  async _listenXWayland () {
-    // TODO move this to an XWayland class
-    return new Promise((resolve, reject) => {
-      const nativeXWayland = Endpoint.setupXWayland(this._nativeCompositorSession.wlDisplay, (wmFd, wlClient) => {
-        resolve({ wmFd, wlClient })
-      }, () => {
-        // TODO what should we do here?
-      })
-      if (nativeXWayland === undefined) {
-        reject(new Error('Failed to setup XWayland.'))
-      } else {
-        const display = Endpoint.getXWaylandDisplay(nativeXWayland)
-        process.env['DISPLAY'] = `:${display}`
-      }
-    })
   }
 
   /**

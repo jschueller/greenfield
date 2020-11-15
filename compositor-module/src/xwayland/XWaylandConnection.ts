@@ -33,6 +33,7 @@ export class XWaylandConnection {
   }
 
   destroy() {
+    this.webSocket.close()
     this.destroyResolve()
   }
 

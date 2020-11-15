@@ -50,7 +50,7 @@ class RemoteSocket implements CompositorRemoteSocket {
       xWaylandBaseURL.searchParams.append('xwayland', 'connection')
       const xWaylandConnectionEndpointURL = xWaylandBaseURL.href
 
-      // FIXME add connection lifecycle management?
+      // The backend might choose to (re)use a different websocket connection. The chosen xwayland websocket connection will receive an out-of-band opcode 7.
       const anyWaylandClientWebSocket = new WebSocket(xWaylandConnectionEndpointURL)
       await this.onWebSocket(anyWaylandClientWebSocket)
     }
@@ -249,10 +249,9 @@ class RemoteSocket implements CompositorRemoteSocket {
       const xWaylandConnection = xWaylandConnections[xWaylandBaseURLhref]
       if (xWaylandConnection !== undefined) {
         xWaylandConnection.wlClient = client
-        // FIXME we probably want some connection lifecycle management here
         xWaylandBaseURL.searchParams.append('xwmFD', `${wmFD}`)
         const xConnection = await XWaylandConnection.create(new WebSocket(xWaylandBaseURL.href))
-
+        client.onClose().then(() => xConnection.destroy())
         xConnection.onDestroy().then(() => delete xWaylandConnections[xWaylandBaseURLhref])
         xWaylandConnection.xConnection = xConnection
         try {
