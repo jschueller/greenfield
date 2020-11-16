@@ -25,7 +25,14 @@ import { XWaylandConnection } from './xwayland/XWaylandConnection'
 import XWaylandShell from './xwayland/XWaylandShell'
 import { XWindowManager } from './xwayland/XWindowManager'
 
-const xWaylandConnections: { [key: string]: { xConnection?: XWaylandConnection, wlClient?: Client, xwm?: XWindowManager } } = {}
+type XWaylandConectionState = {
+  state: 'pending' | 'open',
+  xConnection?: XWaylandConnection,
+  wlClient?: Client,
+  xwm?: XWindowManager
+}
+
+const xWaylandConnections: { [key: string]: XWaylandConectionState } = {}
 
 class RemoteSocket implements CompositorRemoteSocket {
   private readonly _session: Session
@@ -46,13 +53,18 @@ class RemoteSocket implements CompositorRemoteSocket {
     const xWaylandBaseURLhref = xWaylandBaseURL.href
 
     if (xWaylandConnections[xWaylandBaseURLhref] === undefined) {
-      xWaylandConnections[xWaylandBaseURLhref] = {}
+      xWaylandConnections[xWaylandBaseURLhref] = { state: 'pending', }
       xWaylandBaseURL.searchParams.append('xwayland', 'connection')
       const xWaylandConnectionEndpointURL = xWaylandBaseURL.href
 
       // The backend might choose to (re)use a different websocket connection. The chosen xwayland websocket connection will receive an out-of-band opcode 7.
-      const anyWaylandClientWebSocket = new WebSocket(xWaylandConnectionEndpointURL)
-      await this.onWebSocket(anyWaylandClientWebSocket)
+      try {
+        const anyWaylandClientWebSocket = new WebSocket(xWaylandConnectionEndpointURL)
+        await this.onWebSocket(anyWaylandClientWebSocket)
+      } catch (e) {
+        delete xWaylandConnections[xWaylandBaseURLhref]
+        throw e
+      }
     }
   }
 
@@ -248,6 +260,7 @@ class RemoteSocket implements CompositorRemoteSocket {
 
       const xWaylandConnection = xWaylandConnections[xWaylandBaseURLhref]
       if (xWaylandConnection !== undefined) {
+        xWaylandConnection.state = 'open'
         xWaylandConnection.wlClient = client
         xWaylandBaseURL.searchParams.append('xwmFD', `${wmFD}`)
         const xConnection = await XWaylandConnection.create(new WebSocket(xWaylandBaseURL.href))

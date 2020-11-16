@@ -44,8 +44,6 @@ export default class RemoteAppLauncher implements CompositorRemoteAppLauncher {
     appEndpointURL.searchParams.append('compositorSessionId', this._session.compositorSessionId)
 
     // make sure we listen for X connections in case the remote app is an X client
-
-    // FIXME don't wait for xwayland as it will only be launched in response to an X client connecting. Instead listen for a socket listening ack to avoid races.
     this._remoteSocket.ensureXWayland(appEndpointURL)
     const webSocket = new window.WebSocket(appEndpointURL.href)
     return this._remoteSocket.onWebSocket(webSocket)
