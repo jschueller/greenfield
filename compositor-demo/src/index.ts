@@ -1,6 +1,8 @@
 import {
+  CompositorSeatState,
   CompositorSession,
   CompositorSurface,
+  CompositorSurfaceState,
   createAxisEventFromWheelEvent,
   createButtonEventFromMouseEvent,
   createCompositorRemoteAppLauncher,
@@ -49,6 +51,7 @@ function initializeCanvas(session: CompositorSession, canvas: HTMLCanvasElement,
     }
   }
   canvas.onkeyup = (event: KeyboardEvent) => {
+    console.log(`onkeyup(event=${event})`)
     const keyEvent = createKeyEventFromKeyboardEvent(event, false)
     if (keyEvent) {
       event.preventDefault()
@@ -60,14 +63,14 @@ function initializeCanvas(session: CompositorSession, canvas: HTMLCanvasElement,
 function linkUserShellEvents(session: CompositorSession) {
   const userShell = session.userShell
 
-  userShell.events.notify = (variant, message) => window.alert(message)
-  userShell.events.createUserSurface = (compositorSurface, compositorSurfaceState) => {
+  userShell.events.notify = (variant: string, message: string) => window.alert(message)
+  userShell.events.createUserSurface = (compositorSurface: CompositorSurface, compositorSurfaceState: CompositorSurfaceState) => {
     // create view on our scene for the newly created surface
     userShell.actions.createView(compositorSurface, 'myOutputId')
     // request the client to make this surface active
     userShell.actions.requestActive(compositorSurface)
   }
-  userShell.events.updateUserSeat = ({ keyboardFocus, pointerGrab }) => {
+  userShell.events.updateUserSeat = ({ keyboardFocus, pointerGrab }: CompositorSeatState) => {
     // raise the surface when a user clicks on it
     if (pointerGrab !== compositorPointerGrab && pointerGrab) {
       userShell.actions.raise(pointerGrab, 'myOutputId')

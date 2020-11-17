@@ -589,6 +589,8 @@ function createWMWindow(xConnection: XConnection, screen: SCREEN, xwmAtoms: XWMA
 export class XWindowManager {
   static async create(session: Session, xWaylandConnetion: XWaylandConnection, client: Client, xWaylandShell: XWaylandShell) {
     const xConnection = await xWaylandConnetion.setup()
+    // TODO expand error information in xtsb so we know which call the error originated from
+    xConnection.defaultExceptionHandler = (error: Error) => { console.error(JSON.stringify(error)) }
     const xWmResources = await setupResources(xConnection)
     const visualAndColormap = setupVisualAndColormap(xConnection)
 

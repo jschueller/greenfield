@@ -166,7 +166,7 @@ export default class Keyboard implements WlKeyboardRequests, CompositorKeyboard 
 
       focus.resource.onDestroy().then(() => {
         if (this.focus === focus) {
-          this.focus = undefined
+          this.focusLost()
         }
       })
 
@@ -214,6 +214,7 @@ export default class Keyboard implements WlKeyboardRequests, CompositorKeyboard 
   }
 
   handleKey(event: KeyEvent) {
+    console.log(event)
     const linuxKeyCode = event.code
     if (event.down && this._keys.includes(linuxKeyCode)) {
       // prevent key repeat from browser
@@ -245,6 +246,7 @@ export default class Keyboard implements WlKeyboardRequests, CompositorKeyboard 
       this.resources
         .filter(resource => resource.client === targetFocus.resource.client)
         .forEach(resource => {
+          console.log(`key(serial=${serial}, time=${time}, keycode=${evdevKeyCode}, state=${state})`)
           resource.key(serial, time, evdevKeyCode, state)
           if (modsUpdate) {
             resource.modifiers(serial, modsDepressed, modsLatched, modsLocked, group)
