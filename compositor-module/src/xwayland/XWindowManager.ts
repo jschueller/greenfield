@@ -791,7 +791,7 @@ export class XWindowManager {
       location = windowFrame.pointerButton(undefined, buttonId, buttonState)
     }
 
-    const windowFrameStatus = windowFrame.status()
+    const windowFrameStatus = windowFrame.status
     if (windowFrameStatus & FrameStatus.FRAME_STATUS_REPAINT) {
       await this.wmWindowScheduleRepaint(window)
     }
@@ -833,7 +833,7 @@ export class XWindowManager {
     }
 
     const location = window.frame?.pointerEnter(undefined, event.eventX, event.eventY)
-    if (window.frame?.status() && (window.frame?.status() & FrameStatus.FRAME_STATUS_REPAINT)) {
+    if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
       await this.wmWindowScheduleRepaint(window)
     }
 
@@ -849,7 +849,7 @@ export class XWindowManager {
     }
 
     window.frame?.pointerLeave(undefined)
-    if (window.frame?.status() && (window.frame?.status() & FrameStatus.FRAME_STATUS_REPAINT)) {
+    if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
       await this.wmWindowScheduleRepaint(window)
     }
 
@@ -864,7 +864,7 @@ export class XWindowManager {
     }
 
     const location = window.frame?.pointerMotion(undefined, event.eventX, event.eventX)
-    if (window.frame?.status() && (window.frame?.status() & FrameStatus.FRAME_STATUS_REPAINT)) {
+    if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
       await this.wmWindowScheduleRepaint(window)
     }
 
@@ -1401,7 +1401,7 @@ export class XWindowManager {
       return { width: window.width, height: window.height }
     }
     if (window.decorate && window.frame) {
-      return { width: window.frame.width(), height: window.frame.height() }
+      return { width: window.frame.width, height: window.frame.height }
     }
 
     return {
