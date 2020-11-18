@@ -106,19 +106,19 @@ async function main() {
 
   // Add some HTML buttons so the user can launch applications.
   const webShmAppURLButton: HTMLButtonElement = document.createElement('button')
-  webShmAppURLButton.textContent = 'WebSHM URL'
+  webShmAppURLButton.textContent = 'WebSHM'
   const webGLURLButton: HTMLButtonElement = document.createElement('button')
-  webGLURLButton.textContent = 'WebGL URL'
+  webGLURLButton.textContent = 'WebGL'
   const reactCanvasKitURLButton: HTMLButtonElement = document.createElement('button')
-  reactCanvasKitURLButton.textContent = 'React-CanvasKit URL'
+  reactCanvasKitURLButton.textContent = 'React-CanvasKit'
   const remoteGtk3URLButton: HTMLButtonElement = document.createElement('button')
-  remoteGtk3URLButton.textContent = 'Remote GTK3-Demo URL'
+  remoteGtk3URLButton.textContent = 'Remote GTK3-Demo'
   const remoteXtermURLButton: HTMLButtonElement = document.createElement('button')
-  remoteXtermURLButton.textContent = 'Remote XTerm URL'
+  remoteXtermURLButton.textContent = 'Remote XTerm'
 
   const urlInput: HTMLInputElement = document.createElement('input')
   urlInput.type = 'text'
-  urlInput.style.width = '565px'
+  urlInput.style.width = '715px'
   const launchButton: HTMLButtonElement = document.createElement('button')
   launchButton.textContent = 'Launch'
 
