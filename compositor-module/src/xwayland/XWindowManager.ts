@@ -65,14 +65,13 @@ import XWaylandShell from './XWaylandShell'
 import XWaylandShellSurface from './XWaylandShellSurface'
 import {
   canvasXtsbSurfaceCreateWithXRenderFormat,
-  canvasXtsbSurfaceSetSize,
+  canvasXtsbSurfaceSetSize, Frame,
   FrameButton,
   frameCreate,
   FrameStatus,
   themeCreate,
   ThemeLocation,
-  XWindowFrame,
-  XWindowTheme
+  Theme
 } from './XWindowFrame'
 
 type ConfigureValueList = Parameters<XConnection['configureWindow']>[1]
@@ -306,7 +305,7 @@ interface WmWindow {
   surfaceId?: number
   width: number
   height: number
-  frame?: XWindowFrame
+  frame?: Frame
   frameId: WINDOW
   x: number
   y: number
@@ -678,7 +677,7 @@ export class XWindowManager {
   private readonly wmWindow: WINDOW
   private readonly windowHash: { [key: number]: WmWindow } = {}
   private unpairedWindowList: WmWindow[] = []
-  private readonly theme: XWindowTheme = themeCreate()
+  private readonly theme: Theme = themeCreate()
   private readonly imageDecodingCanvas: HTMLCanvasElement = document.createElement('canvas')
   private readonly imageDecodingContext: CanvasRenderingContext2D = this.imageDecodingCanvas.getContext('2d', {
     alpha: true,
@@ -913,7 +912,7 @@ export class XWindowManager {
     window.mapRequestY = window.y
 
     if (window.frameId === Window.None) {
-      this.wmWindowCreateFrame(window) /* sets frame_id */
+      await this.wmWindowCreateFrame(window) /* sets frame_id */
     }
     if (window.frameId === Window.None) {
       throw new Error('Assertion failed. X window should have a parent window.')
@@ -1243,14 +1242,14 @@ export class XWindowManager {
         }))
   }
 
-  private wmWindowCreateFrame(window: WmWindow) {
+  private async wmWindowCreateFrame(window: WmWindow) {
     let buttons = FrameButton.FRAME_BUTTON_CLOSE
 
     if (window.decorate & MWM_DECOR_MAXIMIZE) {
       buttons |= FrameButton.FRAME_BUTTON_MAXIMIZE
     }
 
-    window.frame = frameCreate(this.theme, window.width, window.height, buttons, window.name)
+    window.frame = await frameCreate(this.theme, window.width, window.height, buttons, window.name)
 
     window.frame?.resizeInside(window.width, window.height)
 
@@ -1388,7 +1387,7 @@ export class XWindowManager {
       return { x: 0, y: 0 }
     }
     if (window.decorate && window.frame) {
-      return window.frame.interior()
+      return window.frame.interior
     }
 
     return { x: this.theme.margin, y: this.theme.margin }
