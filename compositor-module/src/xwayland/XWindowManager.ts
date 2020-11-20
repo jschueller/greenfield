@@ -1228,6 +1228,15 @@ export class XWindowManager {
       [this.atoms.WM_CLIENT_MACHINE, Atom.wmClientMachine, ({ value }) => window.machine = value.chars()]
     ]
 
+    window.decorate = window.overrideRedirect ? 0 : MWM_DECOR_EVERYTHING
+    if(window.sizeHints){
+      window.sizeHints.flags = 0
+    }
+    if(window.motifHints){
+      window.motifHints.flags = 0
+    }
+    window.deleteWindow = false
+
     props.forEach(([atom, type, propUpdater]: Prop) =>
       this.xConnection.getProperty(0, window.id, atom, Atom.Any, 0, 2048)
         .then(property => {
@@ -1386,6 +1395,7 @@ export class XWindowManager {
     if (window.fullscreen) {
       return { x: 0, y: 0 }
     }
+
     if (window.decorate && window.frame) {
       return window.frame.interior
     }
@@ -1399,6 +1409,7 @@ export class XWindowManager {
     if (window.fullscreen) {
       return { width: window.width, height: window.height }
     }
+
     if (window.decorate && window.frame) {
       return { width: window.frame.width, height: window.frame.height }
     }

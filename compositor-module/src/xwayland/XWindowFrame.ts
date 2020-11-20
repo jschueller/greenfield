@@ -700,6 +700,7 @@ export interface Theme {
   readonly margin: number,
   readonly width: number,
   readonly titlebarHeight: number
+
   getLocation(x: number, y: number, width: number, height: number, flags: ThemeFrame): ThemeLocation
 }
 
@@ -707,7 +708,8 @@ class XWindowTheme implements Theme {
   readonly activeFrame: CanvasRenderingContext2D
   readonly frameRadius: number = 3
   readonly inactiveFrame: CanvasRenderingContext2D
-  readonly margin: number = 32
+  // FIXME setting this to a non-zero value breaks things somehow
+  readonly margin: number = 0
   readonly shadow: CanvasRenderingContext2D
   readonly titlebarHeight: number = 27
   readonly width: number = 6
@@ -820,7 +822,7 @@ export async function frameCreate(theme: Theme, width: number, height: number, b
   return new XWindowFrame(theme, width, height, buttons, title, closeIcon, maximizeIcon, minimizeIcon, icon)
 }
 
-export function canvasXtsbSurfaceCreateWithXRenderFormat(connetion: XConnection, screen: SCREEN, frameId: WINDOW, formatRgba: PICTFORMINFO, width: number, height: number): HTMLCanvasElement {
+export function canvasXtsbSurfaceCreateWithXRenderFormat(connection: XConnection, screen: SCREEN, frameId: WINDOW, formatRgba: PICTFORMINFO, width: number, height: number): HTMLCanvasElement {
   // TODO
   return document.createElement('canvas')
 }
