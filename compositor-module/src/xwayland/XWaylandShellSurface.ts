@@ -6,6 +6,7 @@ import Session from '../Session'
 import Surface from '../Surface'
 import { SurfaceState } from '../SurfaceState'
 import { UserShellSurfaceRole } from '../UserShellSurfaceRole'
+import { WmWindow } from './XWindowManager'
 
 const SurfaceStates = {
   MAXIMIZED: 'maximized',
@@ -15,7 +16,7 @@ const SurfaceStates = {
 }
 
 export default class XWaylandShellSurface implements UserShellSurfaceRole<void> {
-  static create(session: Session, surface: Surface) {
+  static create(session: Session, window: WmWindow, surface: Surface) {
     const { client, id } = surface.resource
     const userSurface: CompositorSurface = { id: `${id}`, clientId: client.id }
     const userSurfaceState: CompositorSurfaceState = {
@@ -27,26 +28,23 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
       unresponsive: false
     }
 
-    const xWaylandShellSurface = new XWaylandShellSurface(session, surface, userSurface, userSurfaceState)
+    const xWaylandShellSurface = new XWaylandShellSurface(session, window, surface, userSurface, userSurfaceState)
     surface.role = xWaylandShellSurface
     return xWaylandShellSurface
   }
 
-  private readonly session: Session
-  private readonly surface: Surface
-  private _userSurfaceState: CompositorSurfaceState
   private _mapped: boolean = false
   private _managed: boolean = false
 
-  readonly userSurface: CompositorSurface
   state?: string
   sendConfigure?: (width: number, height: number) => void
 
-  constructor(session: Session, surface: Surface, userSurface: CompositorSurface, userSurfaceState: CompositorSurfaceState) {
-    this.session = session
-    this.surface = surface
-    this.userSurface = userSurface
-    this._userSurfaceState = userSurfaceState
+  constructor(
+    private readonly session: Session,
+    private readonly window: WmWindow,
+    private readonly surface: Surface,
+    readonly userSurface: CompositorSurface,
+    private _userSurfaceState: CompositorSurfaceState) {
   }
 
   private _ensureUserShellSurface() {
@@ -188,7 +186,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
     // FIXME get proper size in surface coordinates instead of assume surface space === global space
     const scene = this.session.globals.seat.pointer.scene
 
-    if(scene){
+    if (scene) {
       const width = scene.canvas.width
       const height = scene.canvas.height
 
@@ -206,6 +204,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
       return
     }
     this._userSurfaceState = { ...this._userSurfaceState, active: true }
+    this.window.wmWindowActivate(this.surface)
     this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
   }
 
@@ -214,6 +213,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
       return
     }
     this._userSurfaceState = { ...this._userSurfaceState, active: false }
+    this.window.wmWindowActivate(undefined)
     this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
   }
 }

@@ -68,7 +68,7 @@ enum FrameButtonFlags {
   FRAME_BUTTON_CLICK_DOWN = 0x4,
 }
 
-enum FrameFlag {
+export enum FrameFlag {
   FRAME_FLAG_ACTIVE = 0x1,
   FRAME_FLAG_MAXIMIZED = 0x2
 }
@@ -304,6 +304,10 @@ export interface Frame {
   pointerEnter(pointer: Pointer | undefined, x: number, y: number): ThemeLocation
 
   pointerLeave(pointer: Pointer | undefined): void
+
+  unsetFlag(flag: FrameFlag): void
+
+  setFlag(flag: FrameFlag): void
 }
 
 export class XWindowFrame implements Frame {
