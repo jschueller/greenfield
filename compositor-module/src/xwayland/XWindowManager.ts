@@ -902,7 +902,7 @@ export class XWindowManager {
       return
     }
 
-    const location = window.frame?.pointerMotion(undefined, event.eventX, event.eventX)
+    const location = window.frame?.pointerMotion(undefined, event.eventX, event.eventY)
     if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
       await this.wmWindowScheduleRepaint(window)
     }

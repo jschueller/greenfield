@@ -1,3 +1,4 @@
+import { WlShellSurfaceResize } from 'westfield-runtime-server'
 import { CompositorSurface, CompositorSurfaceState } from '../index'
 import Point from '../math/Point'
 import Output from '../Output'
@@ -7,6 +8,8 @@ import Surface from '../Surface'
 import { SurfaceState } from '../SurfaceState'
 import { UserShellSurfaceRole } from '../UserShellSurfaceRole'
 import { WmWindow } from './XWindowManager'
+
+const { bottom, bottomLeft, bottomRight, left, none, right, top, topLeft, topRight } = WlShellSurfaceResize
 
 const SurfaceStates = {
   MAXIMIZED: 'maximized',
@@ -167,7 +170,79 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
   }
 
   resize(pointer: Pointer, edges: number): void {
+    if (this.state === SurfaceStates.FULLSCREEN || this.state === SurfaceStates.MAXIMIZED) {
+      return
+    }
+    // assigned in switch statement
+    let sizeAdjustment: (width: number, height: number, deltaX: number, deltaY: number) => { w: number, h: number }
 
+    switch (edges) {
+      case bottomRight: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({
+          w: width + deltaX,
+          h: height + deltaY
+        })
+        break
+      }
+      case top: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({ w: width, h: height - deltaY })
+        break
+      }
+      case bottom: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({ w: width, h: height + deltaY })
+        break
+      }
+      case left: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({ w: width - deltaX, h: height })
+        break
+      }
+      case topLeft: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({
+          w: width - deltaX,
+          h: height - deltaY
+        })
+        break
+      }
+      case bottomLeft: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({
+          w: width - deltaX,
+          h: height + deltaY
+        })
+        break
+      }
+      case right: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({ w: width + deltaX, h: height })
+        break
+      }
+      case topRight: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({
+          w: width + deltaX,
+          h: height - deltaY
+        })
+        break
+      }
+      case none:
+      default: {
+        sizeAdjustment = (width, height, deltaX, deltaY) => ({ w: width, h: height })
+        break
+      }
+    }
+
+    const pointerX = pointer.x
+    const pointerY = pointer.y
+    const { w: surfaceWidth, h: surfaceHeight } = this.surface.size || {}
+
+    if (surfaceWidth && surfaceHeight) {
+      const resizeListener = () => {
+        const deltaX = pointer.x - pointerX
+        const deltaY = pointer.y - pointerY
+
+        const size = sizeAdjustment(surfaceWidth, surfaceHeight, deltaX, deltaY)
+        this.sendConfigure?.(size.w, size.h)
+      }
+      pointer.onButtonRelease().then(() => pointer.removeMouseMoveListener(resizeListener))
+      pointer.addMouseMoveListener(resizeListener)
+    }
   }
 
   setTitle(title: string): void {

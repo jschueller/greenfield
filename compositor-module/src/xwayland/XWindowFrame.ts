@@ -731,7 +731,7 @@ class XWindowTheme implements Theme {
       gripSize = 0
     } else {
       margin = this.margin
-      gripSize = 0
+      gripSize = 8
     }
 
     if (flags & ThemeFrame.THEME_FRAME_NO_TITLE) {
