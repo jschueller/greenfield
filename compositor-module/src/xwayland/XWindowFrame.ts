@@ -819,8 +819,17 @@ export async function frameCreate(theme: Theme, width: number, height: number, b
     throw new Error('Could not get 2d rendering context from canvas.')
   }
 
+  closeIcon.canvas.width = signCloseIconData.width
+  closeIcon.canvas.height = signCloseIconData.height
   closeIcon.drawImage(signCloseIconData, 0, 0)
+
+
+  maximizeIcon.canvas.width = signMaximizeIconData.width
+  maximizeIcon.canvas.height = signMaximizeIconData.height
   maximizeIcon.drawImage(signMaximizeIconData, 0, 0)
+
+  minimizeIcon.canvas.width = signMinimizeIconData.width
+  minimizeIcon.canvas.height = signMinimizeIconData.height
   minimizeIcon.drawImage(signMinimizeIconData, 0, 0)
 
   return new XWindowFrame(theme, width, height, buttons, title, closeIcon, maximizeIcon, minimizeIcon, icon)

@@ -42,6 +42,12 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
   state?: string
   sendConfigure?: (width: number, height: number) => void
 
+  private xwayland = {
+    x: 0,
+    y: 0,
+    isSet: false
+  }
+
   constructor(
     private readonly session: Session,
     private readonly window: WmWindow,
@@ -133,7 +139,9 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
   }
 
   setXwayland(x: number, y: number): void {
-
+    this.xwayland.x = x
+    this.xwayland.y = y
+    this.xwayland.isSet = true
   }
 
   move(pointer: Pointer): void {
@@ -252,6 +260,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
 
 
   setWindowGeometry(x: number, y: number, width: number, height: number): void {
+
   }
 
 
