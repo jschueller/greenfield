@@ -53,6 +53,10 @@
       'remote-xterm': {
         bin: "/usr/bin/xterm",
         args: [],
+      },
+      'remote-gnome-terminal': {
+        bin: "/usr/bin/gnome-terminal",
+        args: [],
       }
     }
   }
