@@ -29,8 +29,7 @@ import { CompositorSurface, CompositorSurfaceState } from './index'
 import Point from './math/Point'
 import Seat from './Seat'
 import Session from './Session'
-import Surface from './Surface'
-import { SurfaceState } from './SurfaceState'
+import Surface, { SurfaceState } from './Surface'
 import { UserShellSurfaceRole } from './UserShellSurfaceRole'
 
 const { bottom, bottomLeft, bottomRight, left, none, right, top, topLeft, topRight } = WlShellSurfaceResize
@@ -58,7 +57,7 @@ const SurfaceStates = {
  *            wl_shell_surface_destroy() must be called before destroying
  *            the wl_surface object.
  */
-export default class ShellSurface implements WlShellSurfaceRequests, UserShellSurfaceRole<void> {
+export default class ShellSurface implements WlShellSurfaceRequests, UserShellSurfaceRole {
   readonly userSurface: CompositorSurface
   readonly resource: WlShellSurfaceResource
   readonly wlSurfaceResource: WlSurfaceResource
@@ -113,11 +112,11 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
     this.session = session
   }
 
-  onCommit(surface: Surface, newState: SurfaceState) {
+  onCommit(surface: Surface) {
     const oldPosition = surface.surfaceChildSelf.position
-    surface.surfaceChildSelf.position = Point.create(oldPosition.x + newState.dx, oldPosition.y + newState.dy)
+    surface.surfaceChildSelf.position = Point.create(oldPosition.x + surface.pendingState.dx, oldPosition.y + surface.pendingState.dy)
 
-    if (newState.bufferContents) {
+    if (surface.pendingState.bufferContents) {
       if (!this._mapped) {
         this._map()
       }
@@ -127,7 +126,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
       }
     }
 
-    surface.updateState(newState)
+    surface.commitPendingState()
   }
 
   private _map() {
@@ -398,11 +397,5 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
   setClass(resource: WlShellSurfaceResource, clazz: string) {
     this._userSurfaceState = { ...this._userSurfaceState, appId: clazz }
     this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
-  }
-
-  captureRoleState() {
-  }
-
-  setRoleState(roleState: void) {
   }
 }

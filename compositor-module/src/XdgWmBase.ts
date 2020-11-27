@@ -111,7 +111,7 @@ export default class XdgWmBase implements XdgWmBaseRequests {
 
   getXdgSurface(resource: XdgWmBaseResource, id: number, wlSurfaceResource: WlSurfaceResource) {
     const surface = /** @type {Surface} */wlSurfaceResource.implementation as Surface
-    if (surface.pendingWlBuffer || surface.state.bufferContents) {
+    if (surface.pendingState.bufferResource || surface.state.bufferContents) {
       resource.postError(XdgWmBaseError.invalidSurfaceState, 'Surface had a buffer attached before xdg surface was created.')
       console.log('[client-protocol-error] - Surface had a buffer attached before xdg surface was created.')
       return

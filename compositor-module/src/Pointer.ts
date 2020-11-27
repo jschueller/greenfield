@@ -30,13 +30,13 @@ import { ButtonEvent } from './ButtonEvent'
 import DataDevice from './DataDevice'
 
 import Point from './math/Point'
+import Rect from './math/Rect'
 import Region from './Region'
 import Scene from './render/Scene'
 import Seat from './Seat'
 import Session from './Session'
-import Surface from './Surface'
+import Surface, { SurfaceState } from './Surface'
 import SurfaceRole from './SurfaceRole'
-import { SurfaceState } from './SurfaceState'
 import View from './View'
 
 const { pressed, released } = WlPointerButtonState
@@ -71,7 +71,7 @@ const linuxInput = {
  *            @implements {WlPointerRequests}
  *
  */
-export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
+export default class Pointer implements WlPointerRequests, SurfaceRole {
   session: Session
   scrollFactor: number = 1
   resources: WlPointerResource[] = []
@@ -152,13 +152,13 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
     return this._buttonReleasePromise
   }
 
-  onCommit(surface: Surface, newState: SurfaceState) {
-    this.hotspotX -= newState.dx
-    this.hotspotY -= newState.dy
+  onCommit(surface: Surface) {
+    this.hotspotX -= surface.pendingState.dx
+    this.hotspotY -= surface.pendingState.dy
 
     if (this._cursorSurface && this._cursorSurface.implementation === surface) {
-      if (newState.bufferContents) {
-        surface.updateState(newState)
+      if (surface.pendingState.bufferContents) {
+        surface.commitPendingState()
       }
     }
   }
@@ -244,8 +244,8 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
         const surface = surfaceResource.implementation as Surface
         surface.resource.addDestroyListener(this._cursorDestroyListener)
         surface.role = this
-        surface.state.inputPixmanRegion = Region.createPixmanRegion()
-        surface.pendingInputRegion = Region.createPixmanRegion()
+        Region.fini(surface.state.inputPixmanRegion)
+        Region.initRect(surface.state.inputPixmanRegion, Rect.create(0,0,0,0))
         this.scene.updatePointerView(surface)
       } else {
         this.scene.destroyPointerView()
@@ -518,11 +518,5 @@ export default class Pointer implements WlPointerRequests, SurfaceRole<void> {
 
   private _adjustWithScrollFactor(scroll: number) {
     return scroll * this.scrollFactor
-  }
-
-  captureRoleState() { /* NO-OP */
-  }
-
-  setRoleState(roleState: void) { /* NO-OP */
   }
 }

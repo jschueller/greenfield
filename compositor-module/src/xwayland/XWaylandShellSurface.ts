@@ -4,8 +4,7 @@ import Point from '../math/Point'
 import Output from '../Output'
 import Pointer from '../Pointer'
 import Session from '../Session'
-import Surface from '../Surface'
-import { SurfaceState } from '../SurfaceState'
+import Surface, { SurfaceState } from '../Surface'
 import { UserShellSurfaceRole } from '../UserShellSurfaceRole'
 import { WmWindow } from './XWindowManager'
 
@@ -18,7 +17,7 @@ const SurfaceStates = {
   TOP_LEVEL: 'top_level'
 }
 
-export default class XWaylandShellSurface implements UserShellSurfaceRole<void> {
+export default class XWaylandShellSurface implements UserShellSurfaceRole {
   static create(session: Session, window: WmWindow, surface: Surface) {
     const { client, id } = surface.resource
     const userSurface: CompositorSurface = { id: `${id}`, clientId: client.id }
@@ -64,11 +63,11 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
     }
   }
 
-  onCommit(surface: Surface, newState: SurfaceState): void {
+  onCommit(surface: Surface): void {
     const oldPosition = surface.surfaceChildSelf.position
-    surface.surfaceChildSelf.position = Point.create(oldPosition.x + newState.dx, oldPosition.y + newState.dy)
+    surface.surfaceChildSelf.position = Point.create(oldPosition.x + surface.pendingState.dx, oldPosition.y + surface.pendingState.dy)
 
-    if (newState.bufferContents) {
+    if (surface.pendingState.bufferContents) {
       if (!this._mapped) {
         this._map()
       }
@@ -78,7 +77,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
       }
     }
 
-    surface.updateState(newState)
+    surface.commitPendingState()
   }
 
   private _map() {
@@ -91,12 +90,6 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole<void> 
     this._mapped = false
     this._userSurfaceState = { ...this._userSurfaceState, mapped: this._mapped }
     this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
-  }
-
-  captureRoleState() { /* NO-OP */
-  }
-
-  setRoleState(roleState: void) { /* NO-OP */
   }
 
   setToplevel(): void {

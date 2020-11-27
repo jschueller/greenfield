@@ -1424,11 +1424,11 @@ export class XWindowManager {
     }
 
     const { width, height } = this.wmWindowGetFrameSize(window)
-    Region.fini(window.surface.pendingOpaqueRegion)
+    Region.fini(window.surface.pendingState.opaquePixmanRegion)
     if (window.hasAlpha) {
-      Region.init(window.surface.pendingOpaqueRegion)
+      Region.init(window.surface.pendingState.opaquePixmanRegion)
     } else {
-      Region.initRect(window.surface.pendingOpaqueRegion, Rect.create(0, 0, width, height))
+      Region.initRect(window.surface.pendingState.opaquePixmanRegion, Rect.create(0, 0, width, height))
     }
   }
 
@@ -1503,14 +1503,14 @@ export class XWindowManager {
     const { width, height } = this.wmWindowGetFrameSize(window)
     const { x, y } = this.wmWindowGetChildPosition(window)
 
-    Region.fini(window.surface.pendingOpaqueRegion)
+    Region.fini(window.surface.pendingState.opaquePixmanRegion)
     if (window.hasAlpha) {
-      Region.init(window.surface.pendingOpaqueRegion)
+      Region.init(window.surface.pendingState.opaquePixmanRegion)
     } else {
       /* We leave an extra pixel around the X window area to
        * make sure we don't sample from the undefined alpha
        * channel when filtering. */
-      Region.initRect(window.surface.pendingOpaqueRegion, Rect.create(x - 1, y - 1, window.width + 2, window.height + 2))
+      Region.initRect(window.surface.pendingState.opaquePixmanRegion, Rect.create(x - 1, y - 1, window.width + 2, window.height + 2))
     }
 
     let inputX: number
@@ -1532,8 +1532,8 @@ export class XWindowManager {
 
     console.log(`XWM: win ${window.id} geometry: ${inputX},${inputY} ${inputW}x${inputH}`)
 
-    Region.fini(window.surface.pendingInputRegion)
-    Region.initRect(window.surface.pendingInputRegion, Rect.create(inputX, inputY, inputW, inputH))
+    Region.fini(window.surface.pendingState.inputPixmanRegion)
+    Region.initRect(window.surface.pendingState.inputPixmanRegion, Rect.create(inputX, inputY, inputW, inputH))
 
     window.shsurf?.setWindowGeometry(inputX, inputY, inputW, inputH)
 
