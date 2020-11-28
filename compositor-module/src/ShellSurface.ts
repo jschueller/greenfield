@@ -126,7 +126,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
       }
     }
 
-    surface.commitPendingState()
+    surface.commitPendingStateAndScheduleRender()
   }
 
   private _map() {

@@ -136,7 +136,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     if (this._effectiveSync && this.cacheDirty) {
       mergeState(surface.pendingState, this.cachedState)
       this.cacheDirty = false
-      surface.commitPendingState()
+      surface.commitPendingStateAndScheduleRender()
     }
   }
 
@@ -166,7 +166,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
         surface.pendingState.dy = this.cachedState.dy + surface.pendingState.dy
         this.cacheDirty = false
       }
-      surface.commitPendingState()
+      surface.commitPendingStateAndScheduleRender()
     }
   }
 

@@ -77,7 +77,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
       }
     }
 
-    surface.commitPendingState()
+    surface.commitPendingStateAndScheduleRender()
   }
 
   private _map() {

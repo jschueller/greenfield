@@ -80,13 +80,15 @@ export function mergeState(targetState: SurfaceState, sourceState: SurfaceState)
   Region.init(targetState.opaquePixmanRegion)
   Region.copyTo(targetState.opaquePixmanRegion, sourceState.opaquePixmanRegion)
 
-  targetState.bufferDamageRects = sourceState.bufferDamageRects.slice()
+  targetState.bufferDamageRects = [...sourceState.bufferDamageRects]
 
   targetState.bufferTransform = sourceState.bufferTransform
   targetState.bufferScale = sourceState.bufferScale
 
   targetState.bufferResource = sourceState.bufferResource
   targetState.bufferContents = sourceState.bufferContents
+
+  targetState.subsurfaceChildren = [...sourceState.subsurfaceChildren]
 }
 
 /**
@@ -162,7 +164,7 @@ class Surface implements WlSurfaceRequests {
     dy: 0,
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
-    subsurfaceChildren: []
+    subsurfaceChildren: [this.surfaceChildSelf]
   }
   readonly pendingState: SurfaceState = {
     damageRects: [],
@@ -173,7 +175,7 @@ class Surface implements WlSurfaceRequests {
     dy: 0,
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
-    subsurfaceChildren: []
+    subsurfaceChildren: [this.surfaceChildSelf]
   }
   views: View[] = []
   hasKeyboardInput: boolean = true
@@ -488,7 +490,9 @@ class Surface implements WlSurfaceRequests {
     }
   }
 
-  scheduleRender(): Promise<void[]> {
+  scheduleRender(): Promise<void> {
+    const frameCallbacks = [...this.frameCallbacks]
+    this.frameCallbacks = []
     return Promise.all(
       this.views
         .map(view => {
@@ -497,12 +501,27 @@ class Surface implements WlSurfaceRequests {
         })
         .map(view => view.scene)
         .map(scene => scene.render()))
+      .then(() => {
+        frameCallbacks.forEach(frameCallback => frameCallback.done(Date.now() & 0x7fffffff))
+        this.session.flush()
+        // console.log(`|--> Scene render took ${Date.now() - startSceneRender}ms.`)
+      })
   }
 
   /**
    * Called during commit
    */
-  commitPendingState() {
+  commitPendingStateAndScheduleRender(): void {
+    this.calculateDerivedPendingState()
+    mergeState(this.state, this.pendingState)
+
+    this.pendingState.dx = 0
+    this.pendingState.dy = 0
+    this.pendingState.bufferResource = undefined
+    this.pendingState.bufferContents = undefined
+    this.pendingState.damageRects = []
+    this.pendingState.bufferDamageRects = []
+
     if (this.state.subsurfaceChildren.length > 1) {
       this.state.subsurfaceChildren = this.pendingState.subsurfaceChildren.slice()
 
@@ -520,24 +539,10 @@ class Surface implements WlSurfaceRequests {
       })
     }
 
-    this.calculateDerivedPendingState()
-    mergeState(this.state, this.pendingState)
 
-    this.pendingState.dx = 0
-    this.pendingState.dy = 0
-    this.pendingState.bufferResource = undefined
-    this.pendingState.bufferContents = undefined
-    this.pendingState.damageRects = []
-    this.pendingState.bufferDamageRects = []
-    const frameCallbacks = [...this.frameCallbacks]
-    this.frameCallbacks = []
     // console.log('|- Awaiting scene render.')
     // const startSceneRender = Date.now()
-    this.scheduleRender().then(() => {
-      frameCallbacks.forEach(frameCallback => frameCallback.done(Date.now() & 0x7fffffff))
-      this.session.flush()
-      // console.log(`|--> Scene render took ${Date.now() - startSceneRender}ms.`)
-    })
+    this.scheduleRender()
     // console.log(`-------> total commit took ${Date.now() - startCommit}`)
   }
 

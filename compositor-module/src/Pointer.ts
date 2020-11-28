@@ -158,7 +158,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
 
     if (this._cursorSurface && this._cursorSurface.implementation === surface) {
       if (surface.pendingState.bufferContents) {
-        surface.commitPendingState()
+        surface.commitPendingStateAndScheduleRender()
       }
     }
   }
