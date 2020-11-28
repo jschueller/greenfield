@@ -97,7 +97,7 @@ class Region implements WlRegionRequests {
   // TODO move to stand-alone exported function
   static destroyPixmanRegion(pixmanRegion: number) {
     // @ts-ignore
-    // lib.pixman._free(pixmanRegion)
+    lib.pixman._free(pixmanRegion)
   }
 
   // TODO move to stand-alone exported function
