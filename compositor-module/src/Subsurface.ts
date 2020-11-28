@@ -16,13 +16,14 @@
 // along with Greenfield.  If not, see <https://www.gnu.org/licenses/>.
 
 import {
+  WlSubsurfaceError,
   WlSubsurfaceRequests,
   WlSubsurfaceResource,
-  WlSubsurfaceError,
   WlSurfaceResource
 } from 'westfield-runtime-server'
 
 import Point from './math/Point'
+import Region from './Region'
 import Surface, { mergeState, SurfaceState } from './Surface'
 import SurfaceRole from './SurfaceRole'
 
@@ -80,13 +81,21 @@ import SurfaceRole from './SurfaceRole'
  *
  */
 export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
-  readonly parentWlSurfaceResource: WlSurfaceResource
-  readonly wlSurfaceResource: WlSurfaceResource
-  readonly resource: WlSubsurfaceResource
   pendingPosition?: Point = Point.create(0, 0)
 
-  private _sync: boolean = true
-  private _cachedState?: SurfaceState
+  private sync: boolean = true
+  private cacheDirty = false
+  private readonly cachedState: SurfaceState = {
+    damageRects: [],
+    bufferDamageRects: [],
+    bufferScale: 1,
+    bufferTransform: 0,
+    dx: 0,
+    dy: 0,
+    inputPixmanRegion: Region.createPixmanRegion(),
+    opaquePixmanRegion: Region.createPixmanRegion(),
+    subsurfaceChildren: []
+  }
   private _inert: boolean = false
 
   static create(parentWlSurfaceResource: WlSurfaceResource, wlSurfaceResource: WlSurfaceResource, wlSubsurfaceResource: WlSubsurfaceResource): Subsurface {
@@ -108,14 +117,12 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
   }
 
   private constructor(
-    parentWlSurfaceResource: WlSurfaceResource,
-    wlSurfaceResource: WlSurfaceResource,
-    wlSubsurfaceResource: WlSubsurfaceResource
+    public readonly parentWlSurfaceResource: WlSurfaceResource,
+    public readonly wlSurfaceResource: WlSurfaceResource,
+    public readonly resource: WlSubsurfaceResource
   ) {
-    this.parentWlSurfaceResource = parentWlSurfaceResource
-    this.wlSurfaceResource = wlSurfaceResource
-    this.resource = wlSubsurfaceResource
-    this._cachedState = (wlSurfaceResource.implementation as Surface).state
+    const surface = this.wlSurfaceResource.implementation as Surface
+    mergeState(this.cachedState, surface.state)
   }
 
   onParentCommit() {
@@ -126,7 +133,9 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     const surface = this.wlSurfaceResource.implementation as Surface
     // sibling stacking order & position is committed by the parent itself so no need to do it here.
 
-    if (this._effectiveSync && this._cachedState) {
+    if (this._effectiveSync && this.cacheDirty) {
+      mergeState(surface.pendingState, this.cachedState)
+      this.cacheDirty = false
       surface.commitPendingState()
     }
   }
@@ -137,15 +146,25 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     }
 
     if (this._effectiveSync) {
-      if (!this._cachedState) {
-        this._cachedState = surface.state
-      }
-      mergeState(this._cachedState, surface.pendingState)
+      const { dx, dy } = this.cachedState
+      mergeState(this.cachedState, surface.pendingState)
+      this.cachedState.dx = dx + surface.pendingState.dx
+      this.cachedState.dy = dy + surface.pendingState.dy
+      this.cacheDirty = true
     } else {
-      if (this._cachedState) {
-        mergeState(this._cachedState, surface.pendingState)
-        surface.pendingState = this._cachedState
-        this._cachedState = undefined
+      if (this.cacheDirty) {
+        // combine cached stated with pending site
+        surface.pendingState.bufferDamageRects = [
+          ...this.cachedState.bufferDamageRects,
+          ...surface.pendingState.bufferDamageRects
+        ]
+        surface.pendingState.damageRects = [
+          ...this.cachedState.damageRects,
+          ...surface.pendingState.damageRects
+        ]
+        surface.pendingState.dx = this.cachedState.dx + surface.pendingState.dx
+        surface.pendingState.dy = this.cachedState.dy + surface.pendingState.dy
+        this.cacheDirty = false
       }
       surface.commitPendingState()
     }
@@ -205,7 +224,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
   }
 
   private get _effectiveSync(): boolean {
-    return this._sync || this._parentEffectiveSync
+    return this.sync || this._parentEffectiveSync
   }
 
   private get _parentEffectiveSync(): boolean {
@@ -225,7 +244,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
       return
     }
 
-    this._sync = true
+    this.sync = true
   }
 
   setDesync(resource: WlSubsurfaceResource) {
@@ -233,6 +252,6 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
       return
     }
 
-    this._sync = false
+    this.sync = false
   }
 }

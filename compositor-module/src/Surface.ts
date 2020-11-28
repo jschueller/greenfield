@@ -55,13 +55,12 @@ import View from './View'
 export interface SurfaceState {
   damageRects: Rect[]
   bufferDamageRects: Rect[]
-  opaquePixmanRegion: number
-  inputPixmanRegion: number
+  readonly opaquePixmanRegion: number
+  readonly inputPixmanRegion: number
   dx: number
   dy: number
   bufferTransform: number
   bufferScale: number
-  frameCallbacks: Callback[]
 
   bufferResource?: WlBufferResource
   bufferContents?: BufferContents<any>
@@ -69,21 +68,18 @@ export interface SurfaceState {
   subsurfaceChildren: SurfaceChild[]
 }
 
-// TODO export as stand-alone function
 export function mergeState(targetState: SurfaceState, sourceState: SurfaceState) {
   targetState.dx = sourceState.dx
   targetState.dy = sourceState.dy
 
-  if (sourceState.inputPixmanRegion) {
-    Region.fini(targetState.inputPixmanRegion)
-    Region.init(targetState.inputPixmanRegion)
-    Region.copyTo(targetState.inputPixmanRegion, sourceState.inputPixmanRegion)
-  }
-  if (sourceState.opaquePixmanRegion) {
-    Region.fini(targetState.opaquePixmanRegion)
-    Region.init(targetState.opaquePixmanRegion)
-    Region.copyTo(targetState.opaquePixmanRegion, sourceState.opaquePixmanRegion)
-  }
+  Region.fini(targetState.inputPixmanRegion)
+  Region.init(targetState.inputPixmanRegion)
+  Region.copyTo(targetState.inputPixmanRegion, sourceState.inputPixmanRegion)
+
+  Region.fini(targetState.opaquePixmanRegion)
+  Region.init(targetState.opaquePixmanRegion)
+  Region.copyTo(targetState.opaquePixmanRegion, sourceState.opaquePixmanRegion)
+
   targetState.bufferDamageRects = sourceState.bufferDamageRects.slice()
 
   targetState.bufferTransform = sourceState.bufferTransform
@@ -91,7 +87,6 @@ export function mergeState(targetState: SurfaceState, sourceState: SurfaceState)
 
   targetState.bufferResource = sourceState.bufferResource
   targetState.bufferContents = sourceState.bufferContents
-  targetState.frameCallbacks = targetState.frameCallbacks.concat(sourceState.frameCallbacks)
 }
 
 /**
@@ -158,26 +153,24 @@ class Surface implements WlSurfaceRequests {
     this.pendingState.bufferResource = undefined
   }
   destroyed: boolean = false
-  state: SurfaceState = {
+  readonly state: SurfaceState = {
     damageRects: [],
     bufferDamageRects: [],
     bufferScale: 1,
     bufferTransform: 0,
     dx: 0,
     dy: 0,
-    frameCallbacks: [],
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
     subsurfaceChildren: []
   }
-  pendingState: SurfaceState = {
+  readonly pendingState: SurfaceState = {
     damageRects: [],
     bufferDamageRects: [],
     bufferScale: 1,
     bufferTransform: 0,
     dx: 0,
     dy: 0,
-    frameCallbacks: [],
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
     subsurfaceChildren: []
@@ -191,12 +184,13 @@ class Surface implements WlSurfaceRequests {
   bufferTransformation: Mat4 = Mat4.IDENTITY()
   inverseBufferTransformation: Mat4 = Mat4.IDENTITY()
 
-  pixmanRegion: number = Region.createPixmanRegion()
+  readonly pixmanRegion: number = Region.createPixmanRegion()
   onViewCreated?: (view: View) => void
   size?: Size
 
   private readonly _surfaceChildren: SurfaceChild[] = []
   private _h264BufferContentDecoder?: H264BufferContentDecoder
+  private frameCallbacks: Callback[] = []
 
   static create(wlSurfaceResource: WlSurfaceResource, session: Session): Surface {
     const surface = new Surface(wlSurfaceResource, session.renderer, session)
@@ -220,11 +214,6 @@ class Surface implements WlSurfaceRequests {
       Region.destroyPixmanRegion(surface.pendingState.inputPixmanRegion)
       Region.destroyPixmanRegion(surface.pixmanRegion)
 
-      surface.pixmanRegion = 0
-      surface.state.opaquePixmanRegion = 0
-      surface.state.inputPixmanRegion = 0
-      surface.pendingState.opaquePixmanRegion = 0
-      surface.pendingState.inputPixmanRegion = 0
       surface._handleDestruction()
     })
 
@@ -435,7 +424,7 @@ class Surface implements WlSurfaceRequests {
   }
 
   frame(resource: WlSurfaceResource, callback: number) {
-    this.pendingState.frameCallbacks.push(Callback.create(new WlCallbackResource(resource.client, callback, 1)))
+    this.frameCallbacks.push(Callback.create(new WlCallbackResource(resource.client, callback, 1)))
   }
 
   setOpaqueRegion(resource: WlSurfaceResource, regionResource: WlRegionResource | undefined) {
@@ -497,18 +486,6 @@ class Surface implements WlSurfaceRequests {
       this.role.onCommit(this)
       // console.log(`|--> Role commit took ${Date.now() - startFrameCommit}ms`)
     }
-
-    const frameCallbacks = this.state.frameCallbacks
-    this.state.frameCallbacks = []
-
-    // console.log('|- Awaiting scene render.')
-    // const startSceneRender = Date.now()
-    this.scheduleRender().then(() => {
-      frameCallbacks.forEach(frameCallback => frameCallback.done(Date.now() & 0x7fffffff))
-      this.session.flush()
-      // console.log(`|--> Scene render took ${Date.now() - startSceneRender}ms.`)
-    })
-    // console.log(`-------> total commit took ${Date.now() - startCommit}`)
   }
 
   scheduleRender(): Promise<void[]> {
@@ -545,9 +522,23 @@ class Surface implements WlSurfaceRequests {
 
     this.calculateDerivedPendingState()
     mergeState(this.state, this.pendingState)
-    this.pendingState.frameCallbacks = []
+
+    this.pendingState.dx = 0
+    this.pendingState.dy = 0
+    this.pendingState.bufferResource = undefined
+    this.pendingState.bufferContents = undefined
     this.pendingState.damageRects = []
     this.pendingState.bufferDamageRects = []
+    const frameCallbacks = [...this.frameCallbacks]
+    this.frameCallbacks = []
+    // console.log('|- Awaiting scene render.')
+    // const startSceneRender = Date.now()
+    this.scheduleRender().then(() => {
+      frameCallbacks.forEach(frameCallback => frameCallback.done(Date.now() & 0x7fffffff))
+      this.session.flush()
+      // console.log(`|--> Scene render took ${Date.now() - startSceneRender}ms.`)
+    })
+    // console.log(`-------> total commit took ${Date.now() - startCommit}`)
   }
 
   setBufferTransform(resource: WlSurfaceResource, transform: number) {
