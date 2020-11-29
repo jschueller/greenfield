@@ -68,7 +68,7 @@ export interface SurfaceState {
   subsurfaceChildren: SurfaceChild[]
 }
 
-export function mergeState(targetState: SurfaceState, sourceState: SurfaceState) {
+export function mergeSurfaceState(targetState: SurfaceState, sourceState: SurfaceState) {
   targetState.dx = sourceState.dx
   targetState.dy = sourceState.dy
 
@@ -328,13 +328,12 @@ class Surface implements WlSurfaceRequests {
       }
     })
 
-    this.children.forEach(surfaceChild => this._ensureChildView(surfaceChild, view))
+    this.children.forEach(surfaceChild => this.ensureChildView(surfaceChild, view))
     this.onViewCreated?.(view)
-
     return view
   }
 
-  private _ensureChildView(surfaceChild: SurfaceChild, view: View): View | undefined {
+  private ensureChildView(surfaceChild: SurfaceChild, view: View): View | undefined {
     if (surfaceChild.surface === this) {
       return undefined
     }
@@ -384,7 +383,7 @@ class Surface implements WlSurfaceRequests {
 
     const childViews: View[] = []
     this.views.forEach(view => {
-      const childView = this._ensureChildView(surfaceChild, view)
+      const childView = this.ensureChildView(surfaceChild, view)
       if (childView) {
         childViews.push(childView)
       }
@@ -493,6 +492,7 @@ class Surface implements WlSurfaceRequests {
   scheduleRender(): Promise<void> {
     const frameCallbacks = [...this.frameCallbacks]
     this.frameCallbacks = []
+
     return Promise.all(
       this.views
         .map(view => {
@@ -500,12 +500,12 @@ class Surface implements WlSurfaceRequests {
           return view
         })
         .map(view => view.scene)
-        .map(scene => scene.render()))
-      .then(() => {
-        frameCallbacks.forEach(frameCallback => frameCallback.done(Date.now() & 0x7fffffff))
-        this.session.flush()
-        // console.log(`|--> Scene render took ${Date.now() - startSceneRender}ms.`)
-      })
+        .map(scene => scene.render())
+    ).then(() => {
+      frameCallbacks.forEach(frameCallback => frameCallback.done(Date.now() & 0x7fffffff))
+      this.session.flush()
+      // console.log(`|--> Scene render took ${Date.now() - startSceneRender}ms.`)
+    })
   }
 
   /**
@@ -513,7 +513,7 @@ class Surface implements WlSurfaceRequests {
    */
   commitPendingStateAndScheduleRender(): void {
     this.calculateDerivedPendingState()
-    mergeState(this.state, this.pendingState)
+    mergeSurfaceState(this.state, this.pendingState)
 
     this.pendingState.dx = 0
     this.pendingState.dy = 0
@@ -542,7 +542,7 @@ class Surface implements WlSurfaceRequests {
 
     // console.log('|- Awaiting scene render.')
     // const startSceneRender = Date.now()
-    this.scheduleRender()
+    this.resource.client.connection.addIdleHandler(() => this.scheduleRender())
     // console.log(`-------> total commit took ${Date.now() - startCommit}`)
   }
 

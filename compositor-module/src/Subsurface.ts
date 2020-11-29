@@ -24,7 +24,7 @@ import {
 
 import Point from './math/Point'
 import Region from './Region'
-import Surface, { mergeState, SurfaceState } from './Surface'
+import Surface, { mergeSurfaceState, SurfaceState } from './Surface'
 import SurfaceRole from './SurfaceRole'
 
 /**
@@ -122,7 +122,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     public readonly resource: WlSubsurfaceResource
   ) {
     const surface = this.wlSurfaceResource.implementation as Surface
-    mergeState(this.cachedState, surface.state)
+    mergeSurfaceState(this.cachedState, surface.state)
   }
 
   onParentCommit() {
@@ -134,7 +134,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     // sibling stacking order & position is committed by the parent itself so no need to do it here.
 
     if (this._effectiveSync && this.cacheDirty) {
-      mergeState(surface.pendingState, this.cachedState)
+      mergeSurfaceState(surface.pendingState, this.cachedState)
       this.cacheDirty = false
       surface.commitPendingStateAndScheduleRender()
     }
@@ -147,7 +147,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
 
     if (this._effectiveSync) {
       const { dx, dy } = this.cachedState
-      mergeState(this.cachedState, surface.pendingState)
+      mergeSurfaceState(this.cachedState, surface.pendingState)
       this.cachedState.dx = dx + surface.pendingState.dx
       this.cachedState.dy = dy + surface.pendingState.dy
       this.cacheDirty = true

@@ -69,7 +69,7 @@ class Scene {
     })
   }
 
-  private _ensureResolution() {
+  private ensureResolution() {
     if (this.resolution === 'auto') {
       if (this.canvas.width !== this.canvas.clientWidth || this.canvas.height !== this.canvas.clientHeight) {
         this.canvas.width = this.canvas.clientWidth
@@ -81,7 +81,7 @@ class Scene {
     }
   }
 
-  private _prepareViewRenderState(view: View) {
+  private prepareViewRenderState(view: View) {
     view.applyTransformations()
     const { bufferResource, bufferContents } = view.surface.state
     if (bufferContents instanceof DecodedFrame
@@ -107,32 +107,33 @@ class Scene {
 
   render(): Promise<void> {
     if (!this._renderFrame) {
-      this._renderFrame = createRenderFrame()
-      this._renderFrame.then(() => {
-        this._ensureResolution()
-        const viewStack = this._viewStack()
-
-        // update textures
-        viewStack.forEach(view => this._prepareViewRenderState(view))
-        if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
-          this._prepareViewRenderState(this.pointerView)
-        }
-
-        // render view texture
-        this.sceneShader.use()
-        this.sceneShader.updateSceneData(Size.create(this.canvas.width, this.canvas.height))
-        viewStack.forEach(view => this._renderView(view))
-        if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
-          this._renderView(this.pointerView)
-        }
-        this.sceneShader.release()
-
-        this._renderFrame = undefined
-
-        this.session.userShell.events.sceneRefresh?.(this.id)
-      })
+      this._renderFrame = createRenderFrame().then(() => this.renderNow())
     }
     return this._renderFrame
+  }
+
+  renderNow() {
+    this.ensureResolution()
+    const viewStack = this.viewStack()
+
+    // update textures
+    viewStack.forEach(view => this.prepareViewRenderState(view))
+    if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
+      this.prepareViewRenderState(this.pointerView)
+    }
+
+    // render view texture
+    this.sceneShader.use()
+    this.sceneShader.updateSceneData(Size.create(this.canvas.width, this.canvas.height))
+    viewStack.forEach(view => this.renderView(view))
+    if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
+      this.renderView(this.pointerView)
+    }
+    this.sceneShader.release()
+
+    this._renderFrame = undefined
+
+    this.session.userShell.events.sceneRefresh?.(this.id)
   }
 
   updatePointerView(surface: Surface) {
@@ -150,7 +151,7 @@ class Scene {
     }
   }
 
-  private _updateViewRenderStateWithTexImageSource(view: View, buffer: TexImageSource) {
+  private updateViewRenderStateWithTexImageSource(view: View, buffer: TexImageSource) {
     const { texture, size: { w, h } } = view.renderState
     if (buffer.width === w && buffer.height === h) {
       texture.subImage2d(buffer, 0, 0)
@@ -160,11 +161,12 @@ class Scene {
     }
   }
 
-  private _renderView(view: View) {
+  private renderView(view: View) {
     const { bufferResource, bufferContents } = view.surface.state
     if (view.mapped && bufferResource && bufferContents) {
       this.sceneShader.updateViewData(view)
       this.sceneShader.draw()
+      view.damaged = false
     }
   }
 
@@ -176,7 +178,7 @@ class Scene {
 
   pickView(scenePoint: Point): View | undefined {
     // test views from front to back
-    return this._viewStack().reverse().find(view => {
+    return this.viewStack().reverse().find(view => {
       const surfacePoint = view.toSurfaceSpace(scenePoint)
       return view.surface.isWithinInputRegion(surfacePoint)
     })
@@ -207,15 +209,15 @@ class Scene {
   /**
    * Stack of all views of this scene, in-order from bottom to top.
    */
-  private _viewStack(): View[] {
+  private viewStack(): View[] {
     const stack: View[] = []
-    this.topLevelViews.forEach(topLevelView => this._addToViewStack(stack, topLevelView))
+    this.topLevelViews.forEach(topLevelView => this.addToViewStack(stack, topLevelView))
     return stack
   }
 
-  private _addToViewStack(stack: View[], view: View) {
+  private addToViewStack(stack: View[], view: View) {
     stack.push(view)
-    view.findChildViews().forEach(view => this._addToViewStack(stack, view))
+    view.findChildViews().forEach(view => this.addToViewStack(stack, view))
   }
 
   public ['video/h264'](decodedFrame: DecodedFrame, view: View) {
@@ -223,15 +225,15 @@ class Scene {
   }
 
   public ['image/png'](decodedFrame: DecodedFrame, view: View) {
-    this._updateViewRenderStateWithTexImageSource(view, decodedFrame.pixelContent as ImageBitmap)
+    this.updateViewRenderStateWithTexImageSource(view, decodedFrame.pixelContent as ImageBitmap)
   }
 
   public ['image/rgba'](shmFrame: WebShmFrame, view: View) {
-    this._updateViewRenderStateWithTexImageSource(view, shmFrame.pixelContent)
+    this.updateViewRenderStateWithTexImageSource(view, shmFrame.pixelContent)
   }
 
   public ['image/canvas'](webGLFrame: WebGLFrame, view: View) {
-    this._updateViewRenderStateWithTexImageSource(view, webGLFrame.pixelContent)
+    this.updateViewRenderStateWithTexImageSource(view, webGLFrame.pixelContent)
   }
 }
 

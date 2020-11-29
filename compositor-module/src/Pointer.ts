@@ -272,7 +272,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     }
   }
 
-  private _focusFromEvent(event: ButtonEvent): View | undefined {
+  private focusFromEvent(event: ButtonEvent): View | undefined {
     return this.session.renderer.scenes[event.sceneId].pickView(Point.create(event.x, event.y))
   }
 
@@ -282,11 +282,10 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this.scene = this.session.renderer.scenes[event.sceneId]
     if (this.scene.pointerView) {
       this.scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
-      // this.scene.pointerView.applyTransformations()
-      this.scene.render()
+      this.scene.renderNow()
     }
 
-    let currentFocus = this._focusFromEvent(event)
+    let currentFocus = this.focusFromEvent(event)
 
     const nroPopups = this._popupStack.length
     if (nroPopups && currentFocus &&
@@ -360,7 +359,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
         this.grab = undefined
       }
     } else if (nroPopups) {
-      const focus = this._focusFromEvent(event)
+      const focus = this.focusFromEvent(event)
       // popup grab ends when user has clicked on another client's surface
       const popupGrab = this._popupStack[nroPopups - 1]
       if (!focus || ((popupGrab.popup.implementation as Surface).state.bufferContents && focus.surface.resource.client !== popupGrab.popup.client)) {
