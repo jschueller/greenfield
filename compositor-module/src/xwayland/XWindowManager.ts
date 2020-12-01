@@ -310,7 +310,6 @@ export class WmWindow {
   maximizedVertical = false
   name = ''
   pid = 0
-  repaintScheduled = false
   type = 0
   propertiesDirty = true
   positionDirty = false
@@ -331,6 +330,8 @@ export class WmWindow {
   shsurf?: XWaylandShellSurface
   legacyFullscreenOutput?: Output
   transientFor?: WmWindow
+  configureSource?: () => void
+  repaintSource?: () => Promise<void>
 
   constructor(
     private wm: XWindowManager,
@@ -832,7 +833,7 @@ export class XWindowManager {
 
     const windowFrameStatus = windowFrame.status
     if (windowFrameStatus & FrameStatus.FRAME_STATUS_REPAINT) {
-      await this.wmWindowScheduleRepaint(window)
+      this.wmWindowScheduleRepaint(window)
     }
 
     if (windowFrameStatus & FrameStatus.FRAME_STATUS_MOVE) {
@@ -873,7 +874,7 @@ export class XWindowManager {
 
     const location = window.frame?.pointerEnter(undefined, event.eventX, event.eventY)
     if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
-      await this.wmWindowScheduleRepaint(window)
+      this.wmWindowScheduleRepaint(window)
     }
 
     const cursor = getCursorForLocation(location)
@@ -889,7 +890,7 @@ export class XWindowManager {
 
     window.frame?.pointerLeave(undefined)
     if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
-      await this.wmWindowScheduleRepaint(window)
+      this.wmWindowScheduleRepaint(window)
     }
 
     this.wmWindowSetCursor(window.frameId, CursorType.XWM_CURSOR_LEFT_PTR)
@@ -904,7 +905,7 @@ export class XWindowManager {
 
     const location = window.frame?.pointerMotion(undefined, event.eventX, event.eventY)
     if (window.frame?.status && (window.frame?.status & FrameStatus.FRAME_STATUS_REPAINT)) {
-      await this.wmWindowScheduleRepaint(window)
+      this.wmWindowScheduleRepaint(window)
     }
 
     const cursor = getCursorForLocation(location)
@@ -976,7 +977,7 @@ export class XWindowManager {
     /* Mapped in the X server, we can draw immediately.
      * Cannot set pending state though, no weston_surface until
      * xserver_map_shell_surface() time. */
-    await this.wmWindowScheduleRepaint(window)
+    this.wmWindowScheduleRepaint(window)
   }
 
   private handleMapNotify(event: MapNotifyEvent) {
@@ -1082,7 +1083,7 @@ export class XWindowManager {
 
     this.configureWindow(window.id, values)
     this.wmWindowConfigureFrame(window)
-    await this.wmWindowScheduleRepaint(window)
+    this.wmWindowScheduleRepaint(window)
   }
 
   private async handleConfigureNotify(event: ConfigureNotifyEvent) {
@@ -1136,7 +1137,7 @@ export class XWindowManager {
     window.propertiesDirty = true
 
     if (event.atom === this.atoms._NET_WM_NAME || event.atom === Atom.wmName) {
-      await this.wmWindowScheduleRepaint(window)
+      this.wmWindowScheduleRepaint(window)
     }
   }
 
@@ -1392,7 +1393,7 @@ export class XWindowManager {
     }
   }
 
-  async wmWindowScheduleRepaint(window: WmWindow) {
+  wmWindowScheduleRepaint(window: WmWindow) {
     if (window.frameId === Window.None) {
       /* Override-redirect windows go through here, but we
        * cannot assert(window->override_redirect); because
@@ -1403,14 +1404,13 @@ export class XWindowManager {
       return
     }
 
-    if (window.repaintScheduled) {
+    if (window.repaintSource) {
       return
     }
 
     console.log(`XWM: schedule repaint, win ${window.id}`)
 
-    // TODO weston uses an idle event here, check if this might cause problems in our implementation
-    await this.wmWindowDoRepaint(window)
+    window.repaintSource = this.client.connection.addIdleHandler(() => this.wmWindowDoRepaint(window))
   }
 
   private wmWindowSetPendingStateOR(window: WmWindow) {
@@ -1462,7 +1462,7 @@ export class XWindowManager {
   }
 
   private async wmWindowDoRepaint(window: WmWindow) {
-    window.repaintScheduled = false
+    window.repaintSource = undefined
     this.wmWindowSetAllowCommits(window, false)
     await this.wmWindowReadProperties(window)
     this.wmWindowDrawDecorations(window)
@@ -1586,8 +1586,14 @@ export class XWindowManager {
   }
 
   private wmWindowDestroy(window: WmWindow) {
-    // TODO remove configure source idle event listener?
-    // TODO remove repaint source idle event listener?
+    if(window.configureSource){
+      this.client.connection.removeIdleHandler(window.configureSource)
+      window.configureSource = undefined
+    }
+    if(window.repaintSource){
+      this.client.connection.removeIdleHandler(window.repaintSource)
+      window.repaintSource = undefined
+    }
     // TODO destroy canvas surface?
 
     if (window.frameId) {
@@ -1829,7 +1835,7 @@ export class XWindowManager {
     window.surface.resource.addDestroyListener(window.surfaceDestroyListener)
 
     window.shsurf = this.xWaylandShell.createSurface(window, surface)
-    window.shsurf.sendConfigure = async (width, height) => await this.sendConfigure(window, width, height)
+    window.shsurf.sendConfigure = (width, height) => this.sendConfigure(window, width, height)
 
     console.log(`XWM: map shell surface, win ${window.id}, weston_surface ${window.surface}, xwayland surface ${window.shsurf}`)
 
@@ -1980,7 +1986,11 @@ export class XWindowManager {
     await this.wmWindowConfigure(window)
   }
 
-  private async wmWindowConfigure(window: WmWindow) {
+  private wmWindowConfigure(window: WmWindow) {
+    if (window.configureSource) {
+      this.client.connection.removeIdleHandler(window.configureSource)
+      window.configureSource = undefined
+    }
     this.wmWindowSetAllowCommits(window, false)
 
     const { x, y } = this.wmWindowGetChildPosition(window)
@@ -1992,10 +2002,10 @@ export class XWindowManager {
     })
 
     this.wmWindowConfigureFrame(window)
-    await this.wmWindowScheduleRepaint(window)
+    this.wmWindowScheduleRepaint(window)
   }
 
-  private async sendConfigure(window: WmWindow, width: number, height: number) {
+  private sendConfigure(window: WmWindow, width: number, height: number) {
     let newWidth, newHeight
     let vborder, hborder
 
@@ -2026,7 +2036,14 @@ export class XWindowManager {
       window.frame?.resizeInside(window.width, window.height)
     }
 
-    await this.wmWindowConfigure(window)
+    if (window.configureSource) {
+      return
+    }
+
+    window.configureSource = this.client.connection.addIdleHandler(() => {
+      this.wmWindowConfigure(window)
+      window.configureSource = undefined
+    })
   }
 
   private wmWindowSetCursor(windowId: WINDOW, cursor: CursorType) {
