@@ -35,7 +35,7 @@ import Region from './Region'
 import Scene from './render/Scene'
 import Seat from './Seat'
 import Session from './Session'
-import Surface, { SurfaceState } from './Surface'
+import Surface from './Surface'
 import SurfaceRole from './SurfaceRole'
 import View from './View'
 
@@ -157,9 +157,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this.hotspotY -= surface.pendingState.dy
 
     if (this._cursorSurface && this._cursorSurface.implementation === surface) {
-      if (surface.pendingState.bufferContents) {
-        surface.commitPendingStateAndScheduleRender()
-      }
+      surface.commitPendingStateAndScheduleRender()
     }
   }
 
@@ -245,7 +243,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
         surface.resource.addDestroyListener(this._cursorDestroyListener)
         surface.role = this
         Region.fini(surface.state.inputPixmanRegion)
-        Region.initRect(surface.state.inputPixmanRegion, Rect.create(0,0,0,0))
+        Region.initRect(surface.state.inputPixmanRegion, Rect.create(0, 0, 0, 0))
         this.scene.updatePointerView(surface)
       } else {
         this.scene.destroyPointerView()
@@ -279,10 +277,11 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
   handleMouseMove(event: ButtonEvent) {
     this.x = event.x
     this.y = event.y
-    this.scene = this.session.renderer.scenes[event.sceneId]
-    if (this.scene.pointerView) {
-      this.scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
-      this.scene.render()
+    const scene = this.session.renderer.scenes[event.sceneId]
+    this.scene = scene
+    if (scene && scene.pointerView) {
+      scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
+      scene.pointerView.surface.scheduleRender()
     }
 
     let currentFocus = this.focusFromEvent(event)

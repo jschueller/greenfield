@@ -98,7 +98,6 @@ export function mergeSurfaceState(targetState: SurfaceState, sourceState: Surfac
     targetState.bufferResourceDestroyListener = () => {
       targetState.bufferResourceDestroyListener = undefined
       targetState.bufferResource = undefined
-      targetState.bufferContents = undefined
     }
     targetState.bufferResource.addDestroyListener(targetState.bufferResourceDestroyListener)
   }
@@ -170,12 +169,6 @@ let surfaceH264DecodeId = 0
  */
 class Surface implements WlSurfaceRequests {
   readonly surfaceChildSelf: SurfaceChild = createSurfaceChild(this)
-  readonly pendingBufferDestroyListener = () => {
-    this.pendingState.bufferResource = undefined
-  }
-  readonly bufferDestroyListener = () => {
-    this.pendingState.bufferResource = undefined
-  }
   destroyed: boolean = false
   readonly state: SurfaceState = {
     damageRects: [],
@@ -438,9 +431,16 @@ class Surface implements WlSurfaceRequests {
     this.pendingState.dx = x
     this.pendingState.dy = y
 
-    this.pendingState.bufferResource?.removeDestroyListener(this.pendingBufferDestroyListener)
+    if (this.pendingState.bufferResource && this.pendingState.bufferResourceDestroyListener) {
+      this.pendingState.bufferResource.removeDestroyListener(this.pendingState.bufferResourceDestroyListener)
+    }
+    this.pendingState.bufferResourceDestroyListener = () => {
+      this.pendingState.bufferResource = undefined
+      this.pendingState.bufferResourceDestroyListener = undefined
+    }
     this.pendingState.bufferResource = buffer
-    this.pendingState.bufferResource?.addDestroyListener(this.pendingBufferDestroyListener)
+    this.pendingState.bufferResource?.addDestroyListener(this.pendingState.bufferResourceDestroyListener)
+    this.pendingState.bufferContents = undefined
   }
 
   damage(resource: WlSurfaceResource, x: number, y: number, width: number, height: number) {
@@ -479,13 +479,6 @@ class Surface implements WlSurfaceRequests {
 
   async commit(resource: WlSurfaceResource, serial?: number) {
     // const startCommit = Date.now()
-    if (this.state.bufferResource) {
-      const bufferImplementation = this.state.bufferResource.implementation as BufferImplementation<any>
-      if (bufferImplementation.captured) {
-        bufferImplementation.release()
-      }
-    }
-
     if (this.pendingState.bufferResource) {
       const bufferImplementation = this.pendingState.bufferResource.implementation as BufferImplementation<any>
       bufferImplementation.capture()
@@ -535,16 +528,14 @@ class Surface implements WlSurfaceRequests {
    */
   commitPendingStateAndScheduleRender(): void {
     this.calculateDerivedPendingState()
+    if (this.state.bufferResource) {
+      const bufferImplementation = this.state.bufferResource.implementation as BufferImplementation<any>
+      if (bufferImplementation.captured) {
+        bufferImplementation.release()
+      }
+    }
     mergeSurfaceState(this.state, this.pendingState)
 
-    this.pendingState.dx = 0
-    this.pendingState.dy = 0
-    if (this.pendingState.bufferResource && this.pendingState.bufferResourceDestroyListener) {
-      this.pendingState.bufferResource.removeDestroyListener(this.pendingState.bufferResourceDestroyListener)
-    }
-    this.pendingState.bufferResourceDestroyListener = undefined
-    this.pendingState.bufferResource = undefined
-    this.pendingState.bufferContents = undefined
     this.pendingState.damageRects = []
     this.pendingState.bufferDamageRects = []
     this.pendingState.frameCallbacks = []
