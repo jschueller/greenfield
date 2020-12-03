@@ -282,7 +282,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this.scene = this.session.renderer.scenes[event.sceneId]
     if (this.scene.pointerView) {
       this.scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
-      this.scene.renderNow()
+      this.scene.render()
     }
 
     let currentFocus = this.focusFromEvent(event)

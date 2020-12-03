@@ -53,6 +53,7 @@ import SurfaceRole from './SurfaceRole'
 import View from './View'
 
 export interface SurfaceState {
+
   damageRects: Rect[]
   bufferDamageRects: Rect[]
   readonly opaquePixmanRegion: number
@@ -62,10 +63,13 @@ export interface SurfaceState {
   bufferTransform: number
   bufferScale: number
 
+  bufferResourceDestroyListener?: () => void
   bufferResource?: WlBufferResource
   bufferContents?: BufferContents<any>
 
   subsurfaceChildren: SurfaceChild[]
+
+  frameCallbacks: Callback[]
 }
 
 export function mergeSurfaceState(targetState: SurfaceState, sourceState: SurfaceState) {
@@ -85,10 +89,25 @@ export function mergeSurfaceState(targetState: SurfaceState, sourceState: Surfac
   targetState.bufferTransform = sourceState.bufferTransform
   targetState.bufferScale = sourceState.bufferScale
 
+  if (targetState.bufferResource && targetState.bufferResourceDestroyListener) {
+    targetState.bufferResource.removeDestroyListener(targetState.bufferResourceDestroyListener)
+  }
+  targetState.bufferResourceDestroyListener = undefined
   targetState.bufferResource = sourceState.bufferResource
+  if (targetState.bufferResource) {
+    targetState.bufferResourceDestroyListener = () => {
+      targetState.bufferResourceDestroyListener = undefined
+      targetState.bufferResource = undefined
+      targetState.bufferContents = undefined
+    }
+    targetState.bufferResource.addDestroyListener(targetState.bufferResourceDestroyListener)
+  }
+
   targetState.bufferContents = sourceState.bufferContents
 
   targetState.subsurfaceChildren = [...sourceState.subsurfaceChildren]
+
+  targetState.frameCallbacks = [...targetState.frameCallbacks, ...sourceState.frameCallbacks]
 }
 
 /**
@@ -154,6 +173,9 @@ class Surface implements WlSurfaceRequests {
   readonly pendingBufferDestroyListener = () => {
     this.pendingState.bufferResource = undefined
   }
+  readonly bufferDestroyListener = () => {
+    this.pendingState.bufferResource = undefined
+  }
   destroyed: boolean = false
   readonly state: SurfaceState = {
     damageRects: [],
@@ -164,7 +186,8 @@ class Surface implements WlSurfaceRequests {
     dy: 0,
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
-    subsurfaceChildren: [this.surfaceChildSelf]
+    subsurfaceChildren: [this.surfaceChildSelf],
+    frameCallbacks: []
   }
   readonly pendingState: SurfaceState = {
     damageRects: [],
@@ -175,7 +198,8 @@ class Surface implements WlSurfaceRequests {
     dy: 0,
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
-    subsurfaceChildren: [this.surfaceChildSelf]
+    subsurfaceChildren: [this.surfaceChildSelf],
+    frameCallbacks: []
   }
   views: View[] = []
   hasKeyboardInput: boolean = true
@@ -192,7 +216,6 @@ class Surface implements WlSurfaceRequests {
 
   private readonly _surfaceChildren: SurfaceChild[] = []
   private _h264BufferContentDecoder?: H264BufferContentDecoder
-  private frameCallbacks: Callback[] = []
 
   static create(wlSurfaceResource: WlSurfaceResource, session: Session): Surface {
     const surface = new Surface(wlSurfaceResource, session.renderer, session)
@@ -425,7 +448,7 @@ class Surface implements WlSurfaceRequests {
   }
 
   frame(resource: WlSurfaceResource, callback: number) {
-    this.frameCallbacks.push(Callback.create(new WlCallbackResource(resource.client, callback, 1)))
+    this.pendingState.frameCallbacks.push(Callback.create(new WlCallbackResource(resource.client, callback, 1)))
   }
 
   setOpaqueRegion(resource: WlSurfaceResource, regionResource: WlRegionResource | undefined) {
@@ -466,7 +489,6 @@ class Surface implements WlSurfaceRequests {
     if (this.pendingState.bufferResource) {
       const bufferImplementation = this.pendingState.bufferResource.implementation as BufferImplementation<any>
       bufferImplementation.capture()
-      this.pendingState.bufferResource.removeDestroyListener(this.pendingBufferDestroyListener)
       // const startBufferContents = Date.now()
       try {
         // console.log('|- Awaiting buffer contents.')
@@ -490,8 +512,8 @@ class Surface implements WlSurfaceRequests {
   }
 
   scheduleRender(): Promise<void> {
-    const frameCallbacks = [...this.frameCallbacks]
-    this.frameCallbacks = []
+    const frameCallbacks = [...this.state.frameCallbacks]
+    this.state.frameCallbacks = []
 
     return Promise.all(
       this.views
@@ -517,10 +539,15 @@ class Surface implements WlSurfaceRequests {
 
     this.pendingState.dx = 0
     this.pendingState.dy = 0
+    if (this.pendingState.bufferResource && this.pendingState.bufferResourceDestroyListener) {
+      this.pendingState.bufferResource.removeDestroyListener(this.pendingState.bufferResourceDestroyListener)
+    }
+    this.pendingState.bufferResourceDestroyListener = undefined
     this.pendingState.bufferResource = undefined
     this.pendingState.bufferContents = undefined
     this.pendingState.damageRects = []
     this.pendingState.bufferDamageRects = []
+    this.pendingState.frameCallbacks = []
 
     if (this.state.subsurfaceChildren.length > 1) {
       this.state.subsurfaceChildren = this.pendingState.subsurfaceChildren.slice()

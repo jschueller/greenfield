@@ -94,7 +94,8 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     dy: 0,
     inputPixmanRegion: Region.createPixmanRegion(),
     opaquePixmanRegion: Region.createPixmanRegion(),
-    subsurfaceChildren: []
+    subsurfaceChildren: [],
+    frameCallbacks: []
   }
   private _inert: boolean = false
 
