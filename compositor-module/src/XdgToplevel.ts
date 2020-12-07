@@ -36,7 +36,17 @@ import { UserShellSurfaceRole } from './UserShellSurfaceRole'
 import View from './View'
 import XdgSurface from './XdgSurface'
 
-const { none, bottom, bottomLeft, bottomRight, left, right, top, topLeft, topRight } = XdgToplevelResizeEdge
+const {
+  none,
+  bottom,
+  bottomLeft,
+  bottomRight,
+  left,
+  right,
+  top,
+  topLeft,
+  topRight
+} = XdgToplevelResizeEdge
 const { fullscreen, activated, maximized, resizing } = XdgToplevelState
 
 interface ConfigureState {
@@ -207,8 +217,9 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
       this._unmap()
     }
 
-    surface.commitPendingStateAndScheduleRender()
+    surface.commitPendingState()
     this.commitRoleState()
+    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   /**
@@ -314,7 +325,10 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
   private _fullscreenCommit(surface: Surface) {
     if (surface.pendingState.bufferContents) {
       const bufferSize = surface.pendingState.bufferContents.size
-      const { x: newSurfaceWidth, y: newSurfaceHeight } = surface.toSurfaceSpace(Point.create(bufferSize.w, bufferSize.h))
+      const {
+        x: newSurfaceWidth,
+        y: newSurfaceHeight
+      } = surface.toSurfaceSpace(Point.create(bufferSize.w, bufferSize.h))
       if (newSurfaceWidth > this._configureState.width || newSurfaceHeight > this._configureState.height) {
         this.resource.postError(XdgWmBaseError.invalidSurfaceState, 'Surface size does not match configure event.')
         console.log('[client protocol error] Surface size does not match configure event.')
@@ -458,17 +472,16 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
           // topLevelView.applyTransformations()
-          surface.scheduleRender()
+          topLevelView.scene.render()
         }
 
         pointer.onButtonRelease().then(() => {
-          surface.hasPointerInput = true
+          pointer.enableFocus()
           pointer.removeMouseMoveListener(moveListener)
           pointer.setDefaultCursor()
         })
 
-        surface.hasPointerInput = false
-        pointer.unsetFocus()
+        pointer.disableFocus()
         pointer.addMouseMoveListener(moveListener)
         window.document.body.style.cursor = 'move'
       }
@@ -561,7 +574,10 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
 
     const pointerX = pointer.x
     const pointerY = pointer.y
-    const { width: windowGeometryWidth, height: windowGeometryHeight } = this.xdgSurface.windowGeometry
+    const {
+      width: windowGeometryWidth,
+      height: windowGeometryHeight
+    } = this.xdgSurface.windowGeometry
 
     const sizeCalculation = () => {
       const deltaX = pointer.x - pointerX
@@ -588,17 +604,16 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
 
     const surface = this.xdgSurface.wlSurfaceResource.implementation as Surface
     pointer.onButtonRelease().then(() => {
-      surface.hasPointerInput = true
       pointer.removeMouseMoveListener(resizeListener)
       pointer.setDefaultCursor()
+      pointer.enableFocus()
 
       const { w: width, h: height } = sizeCalculation()
       this._emitConfigure(resource, width, height, [activated], none)
       this._session.flush()
     })
 
-    surface.hasPointerInput = false
-    pointer.unsetFocus()
+    pointer.disableFocus()
     pointer.addMouseMoveListener(resizeListener)
   }
 

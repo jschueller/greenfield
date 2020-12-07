@@ -95,6 +95,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
   private _buttonPressPromise?: Promise<ButtonEvent>
   private _buttonReleaseResolve?: (value?: ButtonEvent | PromiseLike<ButtonEvent>) => void
   private _buttonReleasePromise?: Promise<ButtonEvent>
+  private focusDisabled: boolean = false
 
   static create(session: Session, dataDevice: DataDevice): Pointer {
     return new Pointer(session, dataDevice)
@@ -157,7 +158,12 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this.hotspotY -= surface.pendingState.dy
 
     if (this._cursorSurface && this._cursorSurface.implementation === surface) {
-      surface.commitPendingStateAndScheduleRender()
+      if (surface.pendingState.bufferContents) {
+        surface.commitPendingState()
+        surface.resource.client.connection.addIdleHandler(() => {
+          this.scene?.render()
+        })
+      }
     }
   }
 
@@ -277,11 +283,11 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
   handleMouseMove(event: ButtonEvent) {
     this.x = event.x
     this.y = event.y
-    const scene = this.session.renderer.scenes[event.sceneId]
-    this.scene = scene
-    if (scene && scene.pointerView) {
-      scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
-      scene.pointerView.surface.scheduleRender()
+    this.scene = this.session.renderer.scenes[event.sceneId]
+    if (this.scene.pointerView) {
+      this.scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
+      // this.scene.pointerView.applyTransformations()
+      this.scene.render()
     }
 
     let currentFocus = this.focusFromEvent(event)
@@ -400,6 +406,10 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
   }
 
   setFocus(newFocus: View) {
+    if (this.focusDisabled) {
+      return
+    }
+
     this.focus = newFocus
     const surfaceResource = this.focus.surface.resource
     newFocus.onDestroy().then(() => {
@@ -423,6 +433,15 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this._doPointerEventFor(surfaceResource, pointerResource => {
       pointerResource.enter(this.seat.nextSerial(), surfaceResource, Fixed.parse(surfacePoint.x), Fixed.parse(surfacePoint.y))
     })
+  }
+
+  disableFocus() {
+    this.unsetFocus()
+    this.focusDisabled = true
+  }
+
+  enableFocus() {
+    this.focusDisabled = false
   }
 
   unsetFocus() {

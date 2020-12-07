@@ -19,7 +19,7 @@ import { WlBufferResource } from 'westfield-runtime-server'
 import BufferImplementation from '../BufferImplementation'
 import Surface from '../Surface'
 import BufferStream from './BufferStream'
-import DecodedFrame from "./DecodedFrame";
+import DecodedFrame from './DecodedFrame'
 import FrameDecoder from './FrameDecoder'
 
 const frameDecoder = FrameDecoder.create()
@@ -33,9 +33,8 @@ const frameDecoder = FrameDecoder.create()
  *            updates the contents is defined by the buffer factory interface.
  */
 export default class StreamingBuffer implements BufferImplementation<DecodedFrame> {
-  readonly resource: WlBufferResource;
-  readonly bufferStream: BufferStream;
-  captured: boolean;
+  readonly resource: WlBufferResource
+  readonly bufferStream: BufferStream
 
   static create(wlBufferResource: WlBufferResource): StreamingBuffer {
     const bufferStream = BufferStream.create(wlBufferResource)
@@ -47,7 +46,6 @@ export default class StreamingBuffer implements BufferImplementation<DecodedFram
   private constructor(wlBufferResource: WlBufferResource, bufferStream: BufferStream) {
     this.resource = wlBufferResource
     this.bufferStream = bufferStream
-    this.captured = false
   }
 
   destroy(resource: WlBufferResource) {
@@ -55,16 +53,12 @@ export default class StreamingBuffer implements BufferImplementation<DecodedFram
     resource.destroy()
   }
 
-  getContents(surface: Surface, commitSerial: number): Promise<DecodedFrame> {
-    return this.bufferStream.onFrameAvailable(commitSerial).then(encodedFrame => frameDecoder.decode(surface, encodedFrame))
+  async getContents(surface: Surface, commitSerial: number): Promise<DecodedFrame> {
+    const encodedFrame = await this.bufferStream.onFrameAvailable(commitSerial)
+    return frameDecoder.decode(surface, encodedFrame)
   }
 
   release() {
     this.resource.release()
-    this.captured = false
-  }
-
-  capture() {
-    this.captured = true
   }
 }

@@ -28,8 +28,8 @@ import WebShmFrame from '../webshm/WebShmFrame'
 import SceneShader from './SceneShader'
 import YUVAToRGBA from './YUVAToRGBA'
 
-function createRenderFrame(): Promise<void> {
-  return new Promise(resolve => requestAnimationFrame(() => resolve()))
+function createRenderFrame(): Promise<number> {
+  return new Promise(resolve => requestAnimationFrame(resolve))
 }
 
 class Scene {
@@ -88,16 +88,15 @@ class Scene {
       || bufferContents instanceof WebGLFrame
       || bufferContents instanceof WebShmFrame) {
 
-      if (view.mapped && bufferResource && bufferContents && view.damaged) {
+      if (view.mapped && bufferResource && bufferContents && view.surface.state.contentDamaged) {
         // @ts-ignore que?
         this[bufferContents.mimeType](bufferContents, view)
-        view.damaged = false
-      }
+        view.surface.state.contentDamaged = false
 
-      if (bufferResource) {
-        const bufferImplementation = bufferResource.implementation as BufferImplementation<any>
-        if (bufferImplementation.captured && view.surface.views.filter(view => view.damaged).length === 0) {
+        if (view.surface.state.bufferResource) {
+          const bufferImplementation = view.surface.state.bufferResource.implementation as BufferImplementation<any>
           bufferImplementation.release()
+          this.session.flush()
         }
       }
     } else if (bufferResource !== undefined) {
@@ -107,12 +106,12 @@ class Scene {
 
   render(): Promise<void> {
     if (!this._renderFrame) {
-      this._renderFrame = createRenderFrame().then(() => this.renderNow())
+      this._renderFrame = createRenderFrame().then((time) => this.renderNow(time))
     }
     return this._renderFrame
   }
 
-  renderNow() {
+  private renderNow(time: number) {
     this.ensureResolution()
     const viewStack = this.viewStack()
 
@@ -125,9 +124,9 @@ class Scene {
     // render view texture
     this.sceneShader.use()
     this.sceneShader.updateSceneData(Size.create(this.canvas.width, this.canvas.height))
-    viewStack.forEach(view => this.renderView(view))
+    viewStack.forEach(view => this.renderView(view, time))
     if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
-      this.renderView(this.pointerView)
+      this.renderView(this.pointerView, time)
     }
     this.sceneShader.release()
 
@@ -161,12 +160,13 @@ class Scene {
     }
   }
 
-  private renderView(view: View) {
-    const { bufferResource, bufferContents } = view.surface.state
-    if (view.mapped && bufferResource && bufferContents) {
+  private renderView(view: View, time: number) {
+    if (view.mapped) {
       this.sceneShader.updateViewData(view)
       this.sceneShader.draw()
-      view.damaged = false
+      view.surface.state.frameCallbacks.forEach(frameCallback => frameCallback.done(time << 0))
+      view.surface.state.frameCallbacks = []
+      this.session.flush()
     }
   }
 

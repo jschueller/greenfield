@@ -27,7 +27,7 @@ class Globals implements CompositorGlobals{
 
     const compositor = Compositor.create(session)
     const dataDeviceManager = DataDeviceManager.create()
-    const subcompositor = Subcompositor.create()
+    const subcompositor = Subcompositor.create(session)
 
     const shell = Shell.create(session)
     const xdgWmBase = XdgWmBase.create(session, seat)

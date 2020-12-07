@@ -19,7 +19,6 @@ import { WebFD } from 'westfield-runtime-common'
 import {
   GrWebShmBufferRequests,
   GrWebShmBufferResource,
-  WlBufferRequests,
   WlBufferResource
 } from 'westfield-runtime-server'
 import BufferImplementation from '../BufferImplementation'
@@ -31,7 +30,6 @@ export default class WebShmBuffer implements GrWebShmBufferRequests, BufferImple
   readonly bufferResource: WlBufferResource
   private readonly _webShmFrame: WebShmFrame
   private _pixelContent?: WebFD
-  captured: boolean = false
 
   static create(
     resource: GrWebShmBufferResource,
@@ -95,14 +93,9 @@ export default class WebShmBuffer implements GrWebShmBufferRequests, BufferImple
   }
 
   release() {
-    if (this._pixelContent !== undefined) {
+    if(this._pixelContent){
       this.resource.detach(this._pixelContent)
     }
     this.bufferResource.release()
-    this.captured = false
-  }
-
-  capture() {
-    this.captured = true
   }
 }

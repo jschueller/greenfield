@@ -19,8 +19,8 @@ import {
   WlOutputResource,
   WlSeatResource,
   WlShellSurfaceRequests,
-  WlShellSurfaceResource,
   WlShellSurfaceResize,
+  WlShellSurfaceResource,
   WlShellSurfaceTransient,
   WlSurfaceResource
 } from 'westfield-runtime-server'
@@ -29,10 +29,20 @@ import { CompositorSurface, CompositorSurfaceState } from './index'
 import Point from './math/Point'
 import Seat from './Seat'
 import Session from './Session'
-import Surface, { SurfaceState } from './Surface'
+import Surface from './Surface'
 import { UserShellSurfaceRole } from './UserShellSurfaceRole'
 
-const { bottom, bottomLeft, bottomRight, left, none, right, top, topLeft, topRight } = WlShellSurfaceResize
+const {
+  bottom,
+  bottomLeft,
+  bottomRight,
+  left,
+  none,
+  right,
+  top,
+  topLeft,
+  topRight
+} = WlShellSurfaceResize
 const { inactive } = WlShellSurfaceTransient
 
 const SurfaceStates = {
@@ -126,7 +136,8 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
       }
     }
 
-    surface.commitPendingStateAndScheduleRender()
+    surface.commitPendingState()
+    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   private _map() {
@@ -193,7 +204,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
           const deltaY = pointer.y - pointerY
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
-          surface.scheduleRender()
+          topLevelView.scene.render()
         }
 
         pointer.onButtonRelease().then(() => pointer.removeMouseMoveListener(moveListener))
@@ -271,7 +282,10 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
 
     const pointerX = pointer.x
     const pointerY = pointer.y
-    const { w: surfaceWidth, h: surfaceHeight } = (this.wlSurfaceResource.implementation as Surface).size || {}
+    const {
+      w: surfaceWidth,
+      h: surfaceHeight
+    } = (this.wlSurfaceResource.implementation as Surface).size || {}
 
     if (surfaceWidth && surfaceHeight) {
       const resizeListener = () => {
@@ -280,6 +294,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
 
         const size = sizeAdjustment(surfaceWidth, surfaceHeight, deltaX, deltaY)
         this.resource.configure(edges, size.w, size.h)
+        this.session.flush()
       }
       pointer.onButtonRelease().then(() => pointer.removeMouseMoveListener(resizeListener))
       pointer.addMouseMoveListener(resizeListener)
@@ -337,7 +352,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
     this.state = SurfaceStates.TRANSIENT
   }
 
-  setFullscreen(resource: WlShellSurfaceResource, method: number, framerate: number, output: WlOutputResource|undefined) {
+  setFullscreen(resource: WlShellSurfaceResource, method: number, framerate: number, output: WlOutputResource | undefined) {
     this.state = SurfaceStates.FULLSCREEN
     const surface = this.wlSurfaceResource.implementation as Surface
     // TODO get proper size in surface coordinates instead of assume surface space === global space
@@ -380,7 +395,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
     // FIXME get proper size in surface coordinates instead of assume surface space === global space
     const scene = this.session.globals.seat.pointer.scene
 
-    if(scene){
+    if (scene) {
       const width = scene.canvas.width
       const height = scene.canvas.height
 

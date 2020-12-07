@@ -25,7 +25,6 @@ export default class WebGLBuffer implements BufferImplementation<WebGLFrame> {
   readonly resource: GrWebGlBufferResource
   readonly bufferResource: WlBufferResource
   private readonly _canvas: HTMLCanvasElement
-  captured: boolean = false
 
   static create (resource: GrWebGlBufferResource, bufferResource: WlBufferResource, webFS: WebFS): WebGLBuffer {
     const canvas = window.document.createElement('canvas')
@@ -63,12 +62,7 @@ export default class WebGLBuffer implements BufferImplementation<WebGLFrame> {
     return WebGLFrame.create(this._canvas)
   }
 
-  release () {
-    this.bufferResource.release()
-    this.captured = false
-  }
-
-  capture () {
-    this.captured = true
+  release() {
+      this.bufferResource.release()
   }
 }

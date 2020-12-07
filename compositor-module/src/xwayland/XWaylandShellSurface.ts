@@ -4,11 +4,21 @@ import Point from '../math/Point'
 import Output from '../Output'
 import Pointer from '../Pointer'
 import Session from '../Session'
-import Surface, { SurfaceState } from '../Surface'
+import Surface from '../Surface'
 import { UserShellSurfaceRole } from '../UserShellSurfaceRole'
 import { WmWindow } from './XWindowManager'
 
-const { bottom, bottomLeft, bottomRight, left, none, right, top, topLeft, topRight } = WlShellSurfaceResize
+const {
+  bottom,
+  bottomLeft,
+  bottomRight,
+  left,
+  none,
+  right,
+  top,
+  topLeft,
+  topRight
+} = WlShellSurfaceResize
 
 const SurfaceStates = {
   MAXIMIZED: 'maximized',
@@ -77,7 +87,8 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
       }
     }
 
-    surface.commitPendingStateAndScheduleRender()
+    surface.commitPendingState()
+    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   private _map() {
@@ -161,10 +172,14 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
           const deltaY = pointer.y - pointerY
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
-          this.surface.scheduleRender()
+          topLevelView.scene.render()
         }
 
-        pointer.onButtonRelease().then(() => pointer.removeMouseMoveListener(moveListener))
+        pointer.onButtonRelease().then(() => {
+          pointer.removeMouseMoveListener(moveListener)
+          pointer.enableFocus()
+        })
+        pointer.disableFocus()
         pointer.addMouseMoveListener(moveListener)
       }
     }
@@ -241,7 +256,9 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
         const size = sizeAdjustment(surfaceWidth, surfaceHeight, deltaX, deltaY)
         this.sendConfigure?.(size.w, size.h)
       }
-      pointer.onButtonRelease().then(() => pointer.removeMouseMoveListener(resizeListener))
+      pointer.onButtonRelease().then(() => {
+        pointer.removeMouseMoveListener(resizeListener)
+      })
       pointer.addMouseMoveListener(resizeListener)
     }
   }

@@ -31,13 +31,6 @@ interface BufferImplementation<T extends BufferContents<any>> extends WlBufferRe
    * Called during commit
    */
   release(): void
-
-  /**
-   * Called during commit
-   */
-  capture(): void
-
-  captured: boolean
 }
 
 export default BufferImplementation

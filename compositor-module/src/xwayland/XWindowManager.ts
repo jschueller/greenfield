@@ -331,7 +331,7 @@ export class WmWindow {
   legacyFullscreenOutput?: Output
   transientFor?: WmWindow
   configureSource?: () => void
-  repaintSource?: () => Promise<void>
+  repaintSource?: () => void
 
   constructor(
     private wm: XWindowManager,
@@ -737,7 +737,6 @@ export class XWindowManager {
     [CursorType.XWM_CURSOR_TOP_RIGHT]: Cursor.None
   }
   private lastCursor: CursorType = -1
-
 
   focusWindow?: WmWindow
   private doubleClickPeriod: number = 250
@@ -1410,7 +1409,7 @@ export class XWindowManager {
 
     console.log(`XWM: schedule repaint, win ${window.id}`)
 
-    window.repaintSource = this.client.connection.addIdleHandler(() => this.wmWindowDoRepaint(window))
+    window.repaintSource = this.client.connection.addIdleHandler(() => { this.wmWindowDoRepaint(window) })
   }
 
   private wmWindowSetPendingStateOR(window: WmWindow) {
@@ -1586,11 +1585,11 @@ export class XWindowManager {
   }
 
   private wmWindowDestroy(window: WmWindow) {
-    if(window.configureSource){
+    if (window.configureSource) {
       this.client.connection.removeIdleHandler(window.configureSource)
       window.configureSource = undefined
     }
-    if(window.repaintSource){
+    if (window.repaintSource) {
       this.client.connection.removeIdleHandler(window.repaintSource)
       window.repaintSource = undefined
     }
@@ -2040,10 +2039,7 @@ export class XWindowManager {
       return
     }
 
-    window.configureSource = this.client.connection.addIdleHandler(() => {
-      this.wmWindowConfigure(window)
-      window.configureSource = undefined
-    })
+    window.configureSource = this.client.connection.addIdleHandler(() => { this.wmWindowConfigure(window) })
   }
 
   private wmWindowSetCursor(windowId: WINDOW, cursor: CursorType) {

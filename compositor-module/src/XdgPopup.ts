@@ -213,7 +213,8 @@ export default class XdgPopup implements XdgPopupRequests, SurfaceRole {
     }
 
     this.xdgSurface.updateWindowGeometry(this.xdgSurface.pendingWindowGeometry)
-    surface.commitPendingStateAndScheduleRender()
+    surface.commitPendingState()
+    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   private _map(surface: Surface, newState: SurfaceState) {
