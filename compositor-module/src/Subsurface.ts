@@ -192,12 +192,10 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     } else if (this.cacheDirty) {
       this.commitPendingToCache(surface)
       this.commitCache(surface)
-      // surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
-      surface.scheduleRender()
+      surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
     } else {
       surface.commitPendingState()
-      // surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
-      surface.scheduleRender()
+      surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
     }
   }
 
