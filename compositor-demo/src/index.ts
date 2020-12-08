@@ -51,7 +51,6 @@ function initializeCanvas(session: CompositorSession, canvas: HTMLCanvasElement,
     }
   }
   canvas.onkeyup = (event: KeyboardEvent) => {
-    console.log(`onkeyup(event=${event})`)
     const keyEvent = createKeyEventFromKeyboardEvent(event, false)
     if (keyEvent) {
       event.preventDefault()

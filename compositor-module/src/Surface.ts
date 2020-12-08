@@ -53,7 +53,6 @@ import SurfaceRole from './SurfaceRole'
 import View from './View'
 
 export interface SurfaceState {
-
   damageRects: Rect[]
   bufferDamageRects: Rect[]
   readonly opaquePixmanRegion: number
@@ -64,9 +63,8 @@ export interface SurfaceState {
   bufferScale: number
 
   bufferResourceDestroyListener: () => void
-  bufferResource?: WlBufferResource
+  buffer?: WlBufferResource
   bufferContents?: BufferContents<any>
-  contentDamaged: boolean
 
   subsurfaceChildren: SurfaceChild[]
 
@@ -90,10 +88,9 @@ export function mergeSurfaceState(targetState: SurfaceState, sourceState: Surfac
   targetState.bufferTransform = sourceState.bufferTransform
   targetState.bufferScale = sourceState.bufferScale
 
-  targetState.bufferResource?.removeDestroyListener(targetState.bufferResourceDestroyListener)
-  targetState.bufferResource = sourceState.bufferResource
-  targetState.bufferResource?.addDestroyListener(targetState.bufferResourceDestroyListener)
-  targetState.contentDamaged = sourceState.contentDamaged
+  targetState.buffer?.removeDestroyListener(targetState.bufferResourceDestroyListener)
+  targetState.buffer = sourceState.buffer
+  targetState.buffer?.addDestroyListener(targetState.bufferResourceDestroyListener)
 
   targetState.bufferContents = sourceState.bufferContents
 
@@ -163,8 +160,10 @@ let surfaceH264DecodeId = 0
 class Surface implements WlSurfaceRequests {
   readonly surfaceChildSelf: SurfaceChild = createSurfaceChild(this)
   destroyed: boolean = false
+  damaged: boolean = false
   readonly state: SurfaceState = {
-    contentDamaged: false,
+    bufferContents: undefined,
+    buffer: undefined,
     damageRects: [],
     bufferDamageRects: [],
     bufferScale: 1,
@@ -176,12 +175,13 @@ class Surface implements WlSurfaceRequests {
     subsurfaceChildren: [this.surfaceChildSelf],
     frameCallbacks: [],
     bufferResourceDestroyListener: () => {
-      this.state.bufferResource = undefined
+      this.state.buffer = undefined
       this.state.bufferContents = undefined
     }
   }
-  readonly pendingState: SurfaceState = {
-    contentDamaged: false,
+  pendingState: SurfaceState = {
+    bufferContents: undefined,
+    buffer: undefined,
     damageRects: [],
     bufferDamageRects: [],
     bufferScale: 1,
@@ -193,7 +193,7 @@ class Surface implements WlSurfaceRequests {
     subsurfaceChildren: [this.surfaceChildSelf],
     frameCallbacks: [],
     bufferResourceDestroyListener: () => {
-      this.pendingState.bufferResource = undefined
+      this.pendingState.buffer = undefined
       this.pendingState.bufferContents = undefined
     }
   }
@@ -434,10 +434,10 @@ class Surface implements WlSurfaceRequests {
     this.pendingState.dx = x
     this.pendingState.dy = y
 
-    this.pendingState.bufferResource?.removeDestroyListener(this.pendingState.bufferResourceDestroyListener)
-    this.pendingState.bufferResource = buffer
-    this.pendingState.bufferResource?.addDestroyListener(this.pendingState.bufferResourceDestroyListener)
+    this.pendingState.buffer?.removeDestroyListener(this.pendingState.bufferResourceDestroyListener)
     this.pendingState.bufferContents = undefined
+    this.pendingState.buffer = buffer
+    this.pendingState.buffer?.addDestroyListener(this.pendingState.bufferResourceDestroyListener)
   }
 
   damage(resource: WlSurfaceResource, x: number, y: number, width: number, height: number) {
@@ -476,29 +476,22 @@ class Surface implements WlSurfaceRequests {
 
   async commit(resource: WlSurfaceResource, serial?: number) {
     // const startCommit = Date.now()
-    if (this.pendingState.bufferResource && this.pendingState.bufferContents === undefined) {
-      const bufferImplementation = this.pendingState.bufferResource.implementation as BufferImplementation<any>
-      // const startBufferContents = Date.now()
+    const bufferImplementation = this.pendingState.buffer?.implementation as BufferImplementation<any> | undefined
+    if (bufferImplementation && this.pendingState.bufferContents === undefined) {
       try {
         // console.log('|- Awaiting buffer contents.')
+        // const startBufferContents = Date.now()
         this.pendingState.bufferContents = await bufferImplementation.getContents(this, serial)
-        this.pendingState.contentDamaged = true
+        this.damaged = true
         // console.log(`|--> Buffer contents took ${Date.now() - startBufferContents}ms`)
+        if (this.destroyed) {
+          return
+        }
       } catch (e) {
         console.warn(`[surface: ${resource.id}] - Failed to receive buffer contents.`, e.toString())
       }
     }
-
-    if (this.destroyed) {
-      return
-    }
-
-    if (this.role && typeof this.role.onCommit === 'function') {
-      // console.log('|- Awaiting surface role commit.')
-      // const startFrameCommit = Date.now()
-      this.role.onCommit(this)
-      // console.log(`|--> Role commit took ${Date.now() - startFrameCommit}ms`)
-    }
+    this.role?.onCommit(this)
   }
 
   scheduleRender(): Promise<void[]> {
@@ -513,16 +506,6 @@ class Surface implements WlSurfaceRequests {
    * Called during commit
    */
   commitPendingState(): void {
-    this.calculateDerivedPendingState()
-    mergeSurfaceState(this.state, this.pendingState)
-
-    this.pendingState.damageRects = []
-    this.pendingState.bufferDamageRects = []
-    this.pendingState.frameCallbacks = []
-
-    // console.log('|- Awaiting scene render.')
-    // const startSceneRender = Date.now()
-
     if (this.state.subsurfaceChildren.length > 1) {
       this.state.subsurfaceChildren = this.pendingState.subsurfaceChildren.slice()
 
@@ -539,6 +522,28 @@ class Surface implements WlSurfaceRequests {
         }
       })
     }
+
+    this.calculateDerivedPendingState()
+    // release old buffer if we're replacing it
+    if (this.state.buffer && this.state.buffer?.id !== this.pendingState.buffer?.id) {
+      const bufferImplementation = this.state.buffer.implementation as BufferImplementation<any>
+      if (!bufferImplementation.released) {
+        bufferImplementation.release()
+      }
+    }
+    mergeSurfaceState(this.state, this.pendingState)
+    if (this.state.buffer) {
+      const bufferImplementation = this.state.buffer.implementation as BufferImplementation<any>
+      bufferImplementation.released = false
+    }
+    this.pendingState.damageRects = []
+    this.pendingState.bufferDamageRects = []
+    this.pendingState.frameCallbacks = []
+
+    // console.log('|- Awaiting scene render.')
+    // const startSceneRender = Date.now()
+
+
     // console.log(`-------> total commit took ${Date.now() - startCommit}`)
   }
 

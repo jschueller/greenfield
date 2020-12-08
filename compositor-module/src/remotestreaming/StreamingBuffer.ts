@@ -35,6 +35,7 @@ const frameDecoder = FrameDecoder.create()
 export default class StreamingBuffer implements BufferImplementation<DecodedFrame> {
   readonly resource: WlBufferResource
   readonly bufferStream: BufferStream
+  released: boolean = false
 
   static create(wlBufferResource: WlBufferResource): StreamingBuffer {
     const bufferStream = BufferStream.create(wlBufferResource)
@@ -59,6 +60,11 @@ export default class StreamingBuffer implements BufferImplementation<DecodedFram
   }
 
   release() {
+    if (this.released) {
+      throw new Error('double release')
+    }
     this.resource.release()
+    this.resource.client.connection.flush()
+    this.released = true
   }
 }

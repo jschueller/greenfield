@@ -20,17 +20,16 @@ import BufferContents from './BufferContents'
 import Surface from './Surface'
 
 interface BufferImplementation<T extends BufferContents<any>> extends WlBufferRequests {
+  release(): void
+
+  released: boolean
+
   /**
    * Called during commit
    * @param surface
    * @param serial
    */
   getContents(surface: Surface, serial?: number): Promise<T>
-
-  /**
-   * Called during commit
-   */
-  release(): void
 }
 
 export default BufferImplementation

@@ -30,6 +30,7 @@ export default class WebShmBuffer implements GrWebShmBufferRequests, BufferImple
   readonly bufferResource: WlBufferResource
   private readonly _webShmFrame: WebShmFrame
   private _pixelContent?: WebFD
+  released = false
 
   static create(
     resource: GrWebShmBufferResource,
@@ -89,13 +90,21 @@ export default class WebShmBuffer implements GrWebShmBufferRequests, BufferImple
    * @return {Promise<WebShmFrame>}
    */
   async getContents(surface: Surface, serial: number) {
+    if (this.released) {
+      throw new Error('BUG. Buffer released.')
+    }
     return Promise.resolve(this._webShmFrame)
   }
 
   release() {
-    if(this._pixelContent){
+    if (this.released) {
+      throw new Error('BUG. Buffer already released.')
+    }
+    if (this._pixelContent) {
       this.resource.detach(this._pixelContent)
     }
     this.bufferResource.release()
+    this.bufferResource.client.connection.flush()
+    this.released = true
   }
 }

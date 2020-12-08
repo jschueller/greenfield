@@ -83,23 +83,21 @@ class Scene {
 
   private prepareViewRenderState(view: View) {
     view.applyTransformations()
-    const { bufferResource, bufferContents } = view.surface.state
+    const { buffer, bufferContents } = view.surface.state
     if (bufferContents instanceof DecodedFrame
       || bufferContents instanceof WebGLFrame
       || bufferContents instanceof WebShmFrame) {
 
-      if (view.mapped && bufferResource && bufferContents && view.surface.state.contentDamaged) {
-        // @ts-ignore que?
-        this[bufferContents.mimeType](bufferContents, view)
-        view.surface.state.contentDamaged = false
-
-        if (view.surface.state.bufferResource) {
-          const bufferImplementation = view.surface.state.bufferResource.implementation as BufferImplementation<any>
+      if (view.mapped && buffer && view.surface.damaged) {
+        const bufferImplementation = buffer.implementation as BufferImplementation<any>
+        if (!bufferImplementation.released) {
+          // @ts-ignore que?
+          this[bufferContents.mimeType](bufferContents, view)
+          view.surface.damaged = false
           bufferImplementation.release()
-          this.session.flush()
         }
       }
-    } else if (bufferResource !== undefined) {
+    } else if (buffer !== undefined) {
       throw new Error(`BUG. Unsupported buffer type: ${typeof bufferContents}`)
     }
   }
@@ -164,7 +162,7 @@ class Scene {
     if (view.mapped) {
       this.sceneShader.updateViewData(view)
       this.sceneShader.draw()
-      view.surface.state.frameCallbacks.forEach(frameCallback => frameCallback.done(time << 0))
+      view.surface.state.frameCallbacks.forEach(frameCallback => frameCallback.done(time >>> 0))
       view.surface.state.frameCallbacks = []
       this.session.flush()
     }

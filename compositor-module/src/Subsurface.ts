@@ -88,7 +88,6 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
   private sync: boolean = true
   private cacheDirty = false
   private readonly cachedState: SurfaceState = {
-    contentDamaged: false,
     damageRects: [],
     bufferDamageRects: [],
     bufferScale: 1,
@@ -100,14 +99,14 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     subsurfaceChildren: [],
     frameCallbacks: [],
     bufferResourceDestroyListener: () => {
-      this.cachedState.bufferResource = undefined
+      this.cachedState.buffer = undefined
       // this.cachedState.bufferContents = undefined
     }
   }
   private _inert: boolean = false
 
   static create(session: Session, parentWlSurfaceResource: WlSurfaceResource, wlSurfaceResource: WlSurfaceResource, wlSubsurfaceResource: WlSubsurfaceResource): Subsurface {
-    const subsurface = new Subsurface(session,parentWlSurfaceResource, wlSurfaceResource, wlSubsurfaceResource)
+    const subsurface = new Subsurface(session, parentWlSurfaceResource, wlSurfaceResource, wlSubsurfaceResource)
     wlSubsurfaceResource.implementation = subsurface
 
     wlSurfaceResource.onDestroy().then(() => {
@@ -134,6 +133,15 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     mergeSurfaceState(this.cachedState, surface.state)
   }
 
+  private commitCache(surface: Surface) {
+    surface.pendingState = { ...this.cachedState }
+    this.cachedState.damageRects = []
+    this.cachedState.bufferDamageRects = []
+    this.cachedState.frameCallbacks = []
+    this.cacheDirty = false
+    surface.commitPendingState()
+  }
+
   onParentCommit() {
     if (this._inert) {
       return
@@ -143,14 +151,36 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     // sibling stacking order & position is committed by the parent itself so no need to do it here.
 
     if (this.effectiveSync && this.cacheDirty) {
-      mergeSurfaceState(surface.pendingState, this.cachedState)
-      this.cachedState.damageRects = []
-      this.cachedState.bufferDamageRects = []
-      this.cachedState.frameCallbacks = []
-      this.cacheDirty = false
-      surface.commitPendingState()
+      this.commitCache(surface)
     }
+    // render triggered by parent.
   }
+
+  private commitPendingToCache(surface: Surface) {
+    const { dx, dy } = this.cachedState
+
+    if (this.cacheDirty
+      && this.cachedState.buffer
+      && this.cachedState.buffer?.id !== surface.pendingState.buffer?.id) {
+      const bufferImplementation = this.cachedState.buffer.implementation as BufferImplementation<any>
+      if (!bufferImplementation.released) {
+        bufferImplementation.release()
+      }
+    }
+    mergeSurfaceState(this.cachedState, surface.pendingState)
+    if (this.cachedState.buffer) {
+      const bufferImplementation = this.cachedState.buffer.implementation as BufferImplementation<any>
+      bufferImplementation.released = false
+    }
+
+    surface.pendingState.damageRects = []
+    surface.pendingState.bufferDamageRects = []
+    surface.pendingState.frameCallbacks = []
+    this.cachedState.dx = dx + surface.pendingState.dx
+    this.cachedState.dy = dy + surface.pendingState.dy
+    this.cacheDirty = true
+  }
+
 
   onCommit(surface: Surface) {
     if (this._inert) {
@@ -158,36 +188,16 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     }
 
     if (this.effectiveSync) {
-      const { dx, dy } = this.cachedState
-      if (this.cachedState.bufferResource) {
-        const bufferImplementation = this.cachedState.bufferResource.implementation as BufferImplementation<any>
-        bufferImplementation.release()
-        this.session.flush()
-      }
-      mergeSurfaceState(this.cachedState, surface.pendingState)
-      surface.pendingState.damageRects = []
-      surface.pendingState.bufferDamageRects = []
-      surface.pendingState.frameCallbacks = []
-      this.cachedState.dx = dx + surface.pendingState.dx
-      this.cachedState.dy = dy + surface.pendingState.dy
-      this.cacheDirty = true
+      this.commitPendingToCache(surface)
+    } else if (this.cacheDirty) {
+      this.commitPendingToCache(surface)
+      this.commitCache(surface)
+      // surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
+      surface.scheduleRender()
     } else {
-      if (this.cacheDirty) {
-        // combine cached stated with pending site
-        surface.pendingState.bufferDamageRects = [
-          ...this.cachedState.bufferDamageRects,
-          ...surface.pendingState.bufferDamageRects
-        ]
-        surface.pendingState.damageRects = [
-          ...this.cachedState.damageRects,
-          ...surface.pendingState.damageRects
-        ]
-        surface.pendingState.dx = this.cachedState.dx + surface.pendingState.dx
-        surface.pendingState.dy = this.cachedState.dy + surface.pendingState.dy
-        this.cacheDirty = false
-      }
       surface.commitPendingState()
-      surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
+      // surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
+      surface.scheduleRender()
     }
   }
 
