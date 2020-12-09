@@ -59,10 +59,7 @@ export default class WebGLBuffer implements BufferImplementation<WebGLFrame> {
     // TODO what more to do here?
   }
 
-  async getContents(surface: Surface, serial: number): Promise<WebGLFrame> {
-    if (this.released) {
-      throw new Error('BUG. Buffer released.')
-    }
+  getContents(surface: Surface, serial: number): WebGLFrame {
     return WebGLFrame.create(this._canvas)
   }
 

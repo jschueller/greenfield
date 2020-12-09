@@ -25,7 +25,6 @@ import {
   WlSubsurfaceResource,
   WlSurfaceResource
 } from 'westfield-runtime-server'
-import Session from './Session'
 
 import Subsurface from './Subsurface'
 import Surface from './Surface'
@@ -56,11 +55,11 @@ import Surface from './Surface'
 export default class Subcompositor implements WlSubcompositorRequests {
   private _global?: Global
 
-  static create(session: Session): Subcompositor {
-    return new Subcompositor(session)
+  static create(): Subcompositor {
+    return new Subcompositor()
   }
 
-  private constructor(private session: Session) {
+  private constructor() {
   }
 
   registerGlobal(registry: Registry) {
@@ -94,7 +93,7 @@ export default class Subcompositor implements WlSubcompositorRequests {
     }
 
     const wlSubsurfaceResource = new WlSubsurfaceResource(resource.client, id, resource.version)
-    Subsurface.create(this.session,wlParentSurfaceResource, wlSurfaceResource, wlSubsurfaceResource)
+    Subsurface.create(wlParentSurfaceResource, wlSurfaceResource, wlSubsurfaceResource)
 
     const parentSurface = wlParentSurfaceResource.implementation as Surface
 

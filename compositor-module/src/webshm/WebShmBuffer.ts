@@ -89,11 +89,8 @@ export default class WebShmBuffer implements GrWebShmBufferRequests, BufferImple
    * @param {number}serial
    * @return {Promise<WebShmFrame>}
    */
-  async getContents(surface: Surface, serial: number) {
-    if (this.released) {
-      throw new Error('BUG. Buffer released.')
-    }
-    return Promise.resolve(this._webShmFrame)
+  getContents(surface: Surface, serial: number) {
+    return this._webShmFrame
   }
 
   release() {

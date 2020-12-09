@@ -137,7 +137,6 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
     }
 
     surface.commitPendingState()
-    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   private _map() {

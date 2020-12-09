@@ -16,15 +16,16 @@
 // along with Greenfield.  If not, see <https://www.gnu.org/licenses/>.
 
 import {
-  WlSeatResource, XdgPopupError,
+  WlSeatResource,
+  XdgPopupError,
   XdgPopupRequests,
   XdgPopupResource,
   XdgPositionerConstraintAdjustment,
-  XdgSurfaceResource, XdgWmBaseError
+  XdgSurfaceResource,
+  XdgWmBaseError
 } from 'westfield-runtime-server'
 
 import Point from './math/Point'
-import Rect from './math/Rect'
 import Seat from './Seat'
 import Surface, { SurfaceState } from './Surface'
 import SurfaceRole from './SurfaceRole'
@@ -214,7 +215,6 @@ export default class XdgPopup implements XdgPopupRequests, SurfaceRole {
 
     this.xdgSurface.updateWindowGeometry(this.xdgSurface.pendingWindowGeometry)
     surface.commitPendingState()
-    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   private _map(surface: Surface, newState: SurfaceState) {

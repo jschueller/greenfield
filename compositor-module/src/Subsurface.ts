@@ -25,7 +25,6 @@ import BufferImplementation from './BufferImplementation'
 
 import Point from './math/Point'
 import Region from './Region'
-import Session from './Session'
 import Surface, { mergeSurfaceState, SurfaceState } from './Surface'
 import SurfaceRole from './SurfaceRole'
 
@@ -105,8 +104,8 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
   }
   private _inert: boolean = false
 
-  static create(session: Session, parentWlSurfaceResource: WlSurfaceResource, wlSurfaceResource: WlSurfaceResource, wlSubsurfaceResource: WlSubsurfaceResource): Subsurface {
-    const subsurface = new Subsurface(session, parentWlSurfaceResource, wlSurfaceResource, wlSubsurfaceResource)
+  static create(parentWlSurfaceResource: WlSurfaceResource, wlSurfaceResource: WlSurfaceResource, wlSubsurfaceResource: WlSubsurfaceResource): Subsurface {
+    const subsurface = new Subsurface(parentWlSurfaceResource, wlSurfaceResource, wlSubsurfaceResource)
     wlSubsurfaceResource.implementation = subsurface
 
     wlSurfaceResource.onDestroy().then(() => {
@@ -124,7 +123,6 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
   }
 
   private constructor(
-    private session: Session,
     public readonly parentWlSurfaceResource: WlSurfaceResource,
     public readonly wlSurfaceResource: WlSurfaceResource,
     public readonly resource: WlSubsurfaceResource
@@ -192,10 +190,8 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     } else if (this.cacheDirty) {
       this.commitPendingToCache(surface)
       this.commitCache(surface)
-      surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
     } else {
       surface.commitPendingState()
-      surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
     }
   }
 
@@ -282,5 +278,6 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     }
 
     this.sync = false
+    this.onCommit(this.wlSurfaceResource.implementation as Surface)
   }
 }

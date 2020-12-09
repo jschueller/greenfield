@@ -19,7 +19,7 @@ import { WlBufferRequests } from 'westfield-runtime-server'
 import BufferContents from './BufferContents'
 import Surface from './Surface'
 
-interface BufferImplementation<T extends BufferContents<any>> extends WlBufferRequests {
+interface BufferImplementation<T extends BufferContents<any> | Promise<BufferContents<any>>> extends WlBufferRequests {
   release(): void
 
   released: boolean
@@ -29,7 +29,7 @@ interface BufferImplementation<T extends BufferContents<any>> extends WlBufferRe
    * @param surface
    * @param serial
    */
-  getContents(surface: Surface, serial?: number): Promise<T>
+  getContents(surface: Surface, serial?: number): T
 }
 
 export default BufferImplementation

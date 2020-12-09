@@ -16,6 +16,7 @@
 // along with Greenfield.  If not, see <https://www.gnu.org/licenses/>.
 
 import BufferImplementation from '../BufferImplementation'
+import Callback from '../Callback'
 import Point from '../math/Point'
 import Output from '../Output'
 import DecodedFrame, { OpaqueAndAlphaPlanes } from '../remotestreaming/DecodedFrame'
@@ -29,7 +30,9 @@ import SceneShader from './SceneShader'
 import YUVAToRGBA from './YUVAToRGBA'
 
 function createRenderFrame(): Promise<number> {
-  return new Promise(resolve => requestAnimationFrame(resolve))
+  return new Promise<number>(resolve => {
+    requestAnimationFrame(resolve)
+  })
 }
 
 class Scene {
@@ -47,6 +50,7 @@ class Scene {
   // @ts-ignore
   private _destroyResolve: (value?: void | PromiseLike<void>) => void
   private readonly _destroyPromise: Promise<void>
+  private frameCallbacks: Callback[] = []
 
   static create(session: Session, gl: WebGLRenderingContext, canvas: HTMLCanvasElement, output: Output, sceneId: string): Scene {
     const sceneShader = SceneShader.create(gl)
@@ -102,9 +106,21 @@ class Scene {
     }
   }
 
-  render(): Promise<void> {
+  render(frameCallbacks?: Callback[]): Promise<void> {
+    if (frameCallbacks) {
+      this.frameCallbacks = [...this.frameCallbacks, ...frameCallbacks]
+    }
     if (!this._renderFrame) {
-      this._renderFrame = createRenderFrame().then((time) => this.renderNow(time))
+      this._renderFrame = createRenderFrame().then((time) => {
+        this._renderFrame?.then(time => {
+          this.session.flush()
+          return time
+        })
+        this.renderNow(time)
+        this.frameCallbacks.forEach(callback => callback.done(time))
+        this.frameCallbacks = []
+        this.session.flush()
+      })
     }
     return this._renderFrame
   }
@@ -140,6 +156,7 @@ class Scene {
     } else if (this.pointerView === undefined) {
       this.pointerView = surface.createView(this)
     }
+    this.render()
   }
 
   destroyPointerView() {
@@ -162,9 +179,6 @@ class Scene {
     if (view.mapped) {
       this.sceneShader.updateViewData(view)
       this.sceneShader.draw()
-      view.surface.state.frameCallbacks.forEach(frameCallback => frameCallback.done(time >>> 0))
-      view.surface.state.frameCallbacks = []
-      this.session.flush()
     }
   }
 

@@ -88,7 +88,6 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
     }
 
     surface.commitPendingState()
-    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
   }
 
   private _map() {

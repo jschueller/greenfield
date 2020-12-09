@@ -32,7 +32,7 @@ const frameDecoder = FrameDecoder.create()
  *            gr_surface, but the mechanism by which a client provides and
  *            updates the contents is defined by the buffer factory interface.
  */
-export default class StreamingBuffer implements BufferImplementation<DecodedFrame> {
+export default class StreamingBuffer implements BufferImplementation<Promise<DecodedFrame>> {
   readonly resource: WlBufferResource
   readonly bufferStream: BufferStream
   released: boolean = false
@@ -64,7 +64,6 @@ export default class StreamingBuffer implements BufferImplementation<DecodedFram
       throw new Error('double release')
     }
     this.resource.release()
-    this.resource.client.connection.flush()
     this.released = true
   }
 }

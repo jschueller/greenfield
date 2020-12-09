@@ -207,7 +207,6 @@ class Surface implements WlSurfaceRequests {
   inverseBufferTransformation: Mat4 = Mat4.IDENTITY()
 
   readonly pixmanRegion: number = Region.createPixmanRegion()
-  onViewCreated?: (view: View) => void
   size?: Size
 
   private readonly _surfaceChildren: SurfaceChild[] = []
@@ -348,7 +347,6 @@ class Surface implements WlSurfaceRequests {
     })
 
     this.children.forEach(surfaceChild => this.ensureChildView(surfaceChild, view))
-    this.onViewCreated?.(view)
     return view
   }
 
@@ -476,13 +474,12 @@ class Surface implements WlSurfaceRequests {
 
   async commit(resource: WlSurfaceResource, serial?: number) {
     // const startCommit = Date.now()
-    const bufferImplementation = this.pendingState.buffer?.implementation as BufferImplementation<any> | undefined
+    const bufferImplementation = this.pendingState.buffer?.implementation as BufferImplementation<BufferContents<any> | Promise<BufferContents<any>>> | undefined
     if (bufferImplementation && this.pendingState.bufferContents === undefined) {
       try {
         // console.log('|- Awaiting buffer contents.')
         // const startBufferContents = Date.now()
         this.pendingState.bufferContents = await bufferImplementation.getContents(this, serial)
-        this.damaged = true
         // console.log(`|--> Buffer contents took ${Date.now() - startBufferContents}ms`)
         if (this.destroyed) {
           return
@@ -492,14 +489,6 @@ class Surface implements WlSurfaceRequests {
       }
     }
     this.role?.onCommit(this)
-  }
-
-  scheduleRender(): Promise<void[]> {
-    return Promise.all(
-      this.views
-        .map(view => view.scene)
-        .map(scene => scene.render())
-    )
   }
 
   /**
@@ -524,7 +513,7 @@ class Surface implements WlSurfaceRequests {
     }
 
     this.calculateDerivedPendingState()
-    // release old buffer if we're replacing it
+    // release old buffer if we're replacing it and it hasn't been released yet
     if (this.state.buffer && this.state.buffer?.id !== this.pendingState.buffer?.id) {
       const bufferImplementation = this.state.buffer.implementation as BufferImplementation<any>
       if (!bufferImplementation.released) {
@@ -532,6 +521,7 @@ class Surface implements WlSurfaceRequests {
       }
     }
     mergeSurfaceState(this.state, this.pendingState)
+    this.damaged = true
     if (this.state.buffer) {
       const bufferImplementation = this.state.buffer.implementation as BufferImplementation<any>
       bufferImplementation.released = false
@@ -539,12 +529,17 @@ class Surface implements WlSurfaceRequests {
     this.pendingState.damageRects = []
     this.pendingState.bufferDamageRects = []
     this.pendingState.frameCallbacks = []
+    this.resource.client.connection.addIdleHandler(() => {
+      this.renderViews()
+    })
+    this.resource.client.connection.flush()
+  }
 
-    // console.log('|- Awaiting scene render.')
-    // const startSceneRender = Date.now()
-
-
-    // console.log(`-------> total commit took ${Date.now() - startCommit}`)
+  private renderViews() {
+    if (this.views.length > 0) {
+      this.views.forEach(view => view.scene.render(this.state.frameCallbacks))
+      this.state.frameCallbacks = []
+    }
   }
 
   setBufferTransform(resource: WlSurfaceResource, transform: number) {

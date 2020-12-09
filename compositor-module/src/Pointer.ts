@@ -154,16 +154,10 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
   }
 
   onCommit(surface: Surface) {
-    this.hotspotX -= surface.pendingState.dx
-    this.hotspotY -= surface.pendingState.dy
-
     if (this._cursorSurface && this._cursorSurface.implementation === surface) {
-      if (surface.pendingState.bufferContents) {
-        surface.commitPendingState()
-        surface.resource.client.connection.addIdleHandler(() => {
-          this.scene?.render()
-        })
-      }
+      this.hotspotX -= surface.pendingState.dx
+      this.hotspotY -= surface.pendingState.dy
+      surface.commitPendingState()
     }
   }
 
@@ -286,7 +280,6 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this.scene = this.session.renderer.scenes[event.sceneId]
     if (this.scene.pointerView) {
       this.scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
-      // this.scene.pointerView.applyTransformations()
       this.scene.render()
     }
 

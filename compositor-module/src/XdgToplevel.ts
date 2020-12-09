@@ -217,9 +217,8 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
       this._unmap()
     }
 
-    surface.commitPendingState()
     this.commitRoleState()
-    surface.resource.client.connection.addIdleHandler(() => surface.scheduleRender())
+    surface.commitPendingState()
   }
 
   /**
