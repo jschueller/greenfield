@@ -236,8 +236,6 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this._cursorSurface = surfaceResource
 
     if (this.scene) {
-      this.scene.canvas.style.cursor = 'none'
-
       if (surfaceResource) {
         const surface = surfaceResource.implementation as Surface
         surface.resource.addDestroyListener(this._cursorDestroyListener)
@@ -246,7 +244,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
         Region.initRect(surface.state.inputPixmanRegion, Rect.create(0, 0, 0, 0))
         this.scene.updatePointerView(surface)
       } else {
-        this.scene.destroyPointerView()
+        this.scene.hidePointer()
       }
     }
   }
@@ -459,11 +457,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
 
   setDefaultCursor() {
     if (this.scene) {
-      this.scene.canvas.style.cursor = 'auto'
-      if (this.scene.pointerView) {
-        this.scene.pointerView.destroy()
-        this.scene.pointerView = undefined
-      }
+      this.scene.resetPointer()
     }
   }
 
@@ -494,8 +488,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
         }
       }
 
-      const surfaceResource = focusSurface.resource
-      this._doPointerEventFor(surfaceResource, pointerResource => {
+      this._doPointerEventFor(focusSurface.resource, pointerResource => {
         let deltaX = event.deltaX
         if (deltaX) {
           const xAxis = this._adjustWithScrollFactor(horizontalScroll)

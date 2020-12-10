@@ -26,6 +26,8 @@ import {
   WlOutputTransform
 } from 'westfield-runtime-server'
 
+import { capabilities } from './browser/capabilities'
+
 /**
  *
  *            An output describes part of the compositor geometry.  The
@@ -111,9 +113,9 @@ export default class Output implements WlOutputRequests {
     const physicalHeight = Math.ceil(this.canvas.height * 0.2646)
     const subpixel = WlOutputSubpixel.unknown
     const make = 'Greenfield'
-    const model = window.navigator.userAgent
+    const model = capabilities.userAgent
 
-    const orientation = window.screen.orientation.type
+    const orientation = capabilities.orientationType
     let transform = WlOutputTransform.normal
 
     // FIXME this requires some experimentation to get it right

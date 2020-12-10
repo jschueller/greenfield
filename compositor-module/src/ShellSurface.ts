@@ -101,8 +101,8 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
     shellSurface._doPing(wlShellSurfaceResource)
 
     wlShellSurfaceResource.onDestroy().then(() => {
-      window.clearTimeout(shellSurface._timeoutTimer)
-      window.clearTimeout(shellSurface._pingTimer)
+      clearTimeout(shellSurface._timeoutTimer)
+      clearTimeout(shellSurface._pingTimer)
     })
 
     return shellSurface
@@ -157,12 +157,12 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
       this.session.userShell.events.updateUserSurface?.(this.userSurface, this._userSurfaceState)
       this._pingTimeoutActive = false
     }
-    window.clearTimeout(this._timeoutTimer)
-    this._pingTimer = window.setTimeout(() => this._doPing(resource), 5000)
+    clearTimeout(this._timeoutTimer)
+    this._pingTimer = self.setTimeout(() => this._doPing(resource), 5000)
   }
 
   _doPing(resource: WlShellSurfaceResource) {
-    this._timeoutTimer = window.setTimeout(() => {
+    this._timeoutTimer = self.setTimeout(() => {
       if (!this._pingTimeoutActive) {
         // ping timed out, make view gray
         this._pingTimeoutActive = true

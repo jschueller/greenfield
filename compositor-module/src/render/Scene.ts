@@ -15,10 +15,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Greenfield.  If not, see <https://www.gnu.org/licenses/>.
 
+import { resetCursorImage, setCursor, setCursorImage } from '../browser/cursor'
 import BufferImplementation from '../BufferImplementation'
 import Callback from '../Callback'
 import Point from '../math/Point'
 import Output from '../Output'
+import Pointer from '../Pointer'
 import DecodedFrame, { OpaqueAndAlphaPlanes } from '../remotestreaming/DecodedFrame'
 import Session from '../Session'
 import Size from '../Size'
@@ -85,6 +87,29 @@ class Scene {
     }
   }
 
+  hidePointer() {
+    setCursor('none')
+    this.destroyPointerView()
+  }
+
+
+  resetPointer() {
+    resetCursorImage()
+    this.destroyPointerView()
+  }
+
+  private preparePointerViewRenderState(view: View) {
+    const pointerSurface = view.surface
+    const bufferContents = pointerSurface.state.bufferContents
+    if (bufferContents) {
+      const { blob } = pointerSurface.state.bufferContents?.pixelContent as { blob: Blob }
+      const pointer = pointerSurface.role as Pointer
+      setCursorImage(blob, pointer.hotspotX, pointer.hotspotY)
+    } else {
+      resetCursorImage()
+    }
+  }
+
   prepareViewRenderState(view: View) {
     view.applyTransformations()
     const { buffer, bufferContents } = view.surface.state
@@ -95,8 +120,12 @@ class Scene {
       if (view.mapped && buffer && view.surface.damaged) {
         const bufferImplementation = buffer.implementation as BufferImplementation<any>
         if (!bufferImplementation.released) {
-          // @ts-ignore que?
-          this[bufferContents.mimeType](bufferContents, view)
+          if (view === this.pointerView) {
+            this.preparePointerViewRenderState(view)
+          } else {
+            // @ts-ignore que?
+            this[bufferContents.mimeType](bufferContents, view)
+          }
           view.surface.damaged = false
           bufferImplementation.release()
         }
@@ -106,7 +135,7 @@ class Scene {
     }
   }
 
-  registerFrameCallbacks(frameCallbacks?: Callback[]){
+  registerFrameCallbacks(frameCallbacks?: Callback[]) {
     if (frameCallbacks) {
       this.frameCallbacks = [...this.frameCallbacks, ...frameCallbacks]
     }
@@ -128,9 +157,6 @@ class Scene {
     const viewStack = this.viewStack()
     // update textures
     viewStack.forEach(view => this.prepareViewRenderState(view))
-    if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
-      this.prepareViewRenderState(this.pointerView)
-    }
   }
 
   private renderNow() {
@@ -141,9 +167,6 @@ class Scene {
     this.sceneShader.use()
     this.sceneShader.updateSceneData(Size.create(this.canvas.width, this.canvas.height))
     viewStack.forEach(view => this.renderView(view))
-    if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
-      this.renderView(this.pointerView)
-    }
     this.sceneShader.release()
 
     this._renderFrame = undefined
@@ -158,12 +181,12 @@ class Scene {
     } else if (this.pointerView === undefined) {
       this.pointerView = surface.createView(this)
     }
-    this.render()
   }
 
   destroyPointerView() {
     if (this.pointerView !== undefined) {
       this.pointerView.destroy()
+      this.pointerView = undefined
     }
   }
 
@@ -239,7 +262,8 @@ class Scene {
   }
 
   public ['image/png'](decodedFrame: DecodedFrame, view: View) {
-    this.updateViewRenderStateWithTexImageSource(view, decodedFrame.pixelContent as ImageBitmap)
+    const { bitmap } = decodedFrame.pixelContent as { bitmap: ImageBitmap, blob: Blob }
+    this.updateViewRenderStateWithTexImageSource(view, bitmap)
   }
 
   public ['image/rgba'](shmFrame: WebShmFrame, view: View) {

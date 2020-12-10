@@ -24,6 +24,7 @@ import {
   XdgToplevelState,
   XdgWmBaseError
 } from 'westfield-runtime-server'
+import { setCursor } from './browser/cursor'
 import { CompositorSurface, CompositorSurfaceState } from './index'
 import Mat4 from './math/Mat4'
 import Point from './math/Point'
@@ -506,56 +507,56 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
 
     switch (edges) {
       case bottomRight: {
-        window.document.body.style.cursor = 'nwse-resize'
+        setCursor('nwse-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width + deltaX, h: height + deltaY }
         }
         break
       }
       case top: {
-        window.document.body.style.cursor = 'ns-resize'
+        setCursor('ns-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width, h: height - deltaY }
         }
         break
       }
       case bottom: {
-        window.document.body.style.cursor = 'ns-resize'
+        setCursor('ns-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width, h: height + deltaY }
         }
         break
       }
       case left: {
-        window.document.body.style.cursor = 'ew-resize'
+        setCursor('ew-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width - deltaX, h: height }
         }
         break
       }
       case topLeft: {
-        window.document.body.style.cursor = 'nwse-resize'
+        setCursor('nwse-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width - deltaX, h: height - deltaY }
         }
         break
       }
       case bottomLeft: {
-        window.document.body.style.cursor = 'nesw-resize'
+        setCursor('nesw-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width - deltaX, h: height + deltaY }
         }
         break
       }
       case right: {
-        window.document.body.style.cursor = 'ew-resize'
+        setCursor('ew-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width + deltaX, h: height }
         }
         break
       }
       case topRight: {
-        window.document.body.style.cursor = 'nesw-resize'
+        setCursor('nesw-resize')
         sizeAdjustment = (width, height, deltaX, deltaY) => {
           return { w: width + deltaX, h: height - deltaY }
         }

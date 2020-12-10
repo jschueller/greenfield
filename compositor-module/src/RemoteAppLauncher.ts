@@ -45,7 +45,7 @@ export default class RemoteAppLauncher implements CompositorRemoteAppLauncher {
 
     // make sure we listen for X connections in case the remote app is an X client
     this._remoteSocket.ensureXWayland(appEndpointURL)
-    const webSocket = new window.WebSocket(appEndpointURL.href)
+    const webSocket = new WebSocket(appEndpointURL.href)
     return this._remoteSocket.onWebSocket(webSocket)
   }
 }

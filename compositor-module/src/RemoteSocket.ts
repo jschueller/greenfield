@@ -37,7 +37,7 @@ const xWaylandConnections: { [key: string]: XWaylandConectionState } = {}
 class RemoteSocket implements CompositorRemoteSocket {
   private readonly _session: Session
   private readonly _textEncoder: TextEncoder = new TextEncoder()
-  private readonly _textDecoder: TextDecoder = new window.TextDecoder()
+  private readonly _textDecoder: TextDecoder = new TextDecoder()
 
   static create(session: Session): RemoteSocket {
     return new RemoteSocket(session)

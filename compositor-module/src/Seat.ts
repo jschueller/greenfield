@@ -34,6 +34,8 @@ import Pointer from './Pointer'
 import Session from './Session'
 import Touch from './Touch'
 
+import { capabilities } from './browser/capabilities'
+
 const { keyboard, pointer, touch } = WlSeatCapability
 
 /**
@@ -61,7 +63,7 @@ class Seat implements WlSeatRequests, CompositorSeat {
     const keyboard = Keyboard.create(session, dataDevice)
     const pointer = Pointer.create(session, dataDevice)
     const touch = Touch.create()
-    const hasTouch = 'ontouchstart' in document.documentElement
+    const hasTouch = capabilities.hasTouch
 
     const userSeatState = { pointerGrab: undefined, keyboardFocus: undefined }
 
