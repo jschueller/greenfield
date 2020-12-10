@@ -211,6 +211,7 @@ class Surface implements WlSurfaceRequests {
 
   private readonly _surfaceChildren: SurfaceChild[] = []
   private _h264BufferContentDecoder?: H264BufferContentDecoder
+  private renderSource?: () => void
 
   static create(wlSurfaceResource: WlSurfaceResource, session: Session): Surface {
     const surface = new Surface(wlSurfaceResource, session.renderer, session)
@@ -494,7 +495,7 @@ class Surface implements WlSurfaceRequests {
   /**
    * Called during commit
    */
-  commitPendingState(): void {
+  commitPending(): void {
     if (this.state.subsurfaceChildren.length > 1) {
       this.state.subsurfaceChildren = this.pendingState.subsurfaceChildren.slice()
 
@@ -529,17 +530,27 @@ class Surface implements WlSurfaceRequests {
     this.pendingState.damageRects = []
     this.pendingState.bufferDamageRects = []
     this.pendingState.frameCallbacks = []
-    this.resource.client.connection.addIdleHandler(() => {
-      this.renderViews()
-    })
+    this.renderViews()
     this.resource.client.connection.flush()
   }
 
   private renderViews() {
-    if (this.views.length > 0) {
-      this.views.forEach(view => view.scene.render(this.state.frameCallbacks))
-      this.state.frameCallbacks = []
+    if (this.renderSource) {
+      return
     }
+    this.renderSource = this.resource.client.connection.addIdleHandler(() => {
+      this.renderSource = undefined
+      if (this.views.length > 0) {
+        new Set(this.views.map(view => {
+          view.scene.prepareViewRenderState(view)
+          return view.scene
+        })).forEach(scene => {
+          scene.registerFrameCallbacks(this.state.frameCallbacks)
+          scene.render()
+        })
+        this.state.frameCallbacks = []
+      }
+    })
   }
 
   setBufferTransform(resource: WlSurfaceResource, transform: number) {

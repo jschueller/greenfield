@@ -136,7 +136,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
       }
     }
 
-    surface.commitPendingState()
+    surface.commitPending()
   }
 
   private _map() {
@@ -203,6 +203,7 @@ export default class ShellSurface implements WlShellSurfaceRequests, UserShellSu
           const deltaY = pointer.y - pointerY
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
+          topLevelView.applyTransformations()
           topLevelView.scene.render()
         }
 

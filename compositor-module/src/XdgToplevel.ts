@@ -218,7 +218,7 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
     }
 
     this.commitRoleState()
-    surface.commitPendingState()
+    surface.commitPending()
   }
 
   /**
@@ -470,7 +470,7 @@ export default class XdgToplevel implements XdgToplevelRequests, UserShellSurfac
           const deltaY = pointer.y - pointerY
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
-          // topLevelView.applyTransformations()
+          topLevelView.applyTransformations()
           topLevelView.scene.render()
         }
 

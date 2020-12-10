@@ -137,7 +137,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
     this.cachedState.bufferDamageRects = []
     this.cachedState.frameCallbacks = []
     this.cacheDirty = false
-    surface.commitPendingState()
+    surface.commitPending()
   }
 
   onParentCommit() {
@@ -191,7 +191,7 @@ export default class Subsurface implements WlSubsurfaceRequests, SurfaceRole {
       this.commitPendingToCache(surface)
       this.commitCache(surface)
     } else {
-      surface.commitPendingState()
+      surface.commitPending()
     }
   }
 

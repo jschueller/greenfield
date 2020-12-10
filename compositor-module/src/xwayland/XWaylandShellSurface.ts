@@ -87,7 +87,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
       }
     }
 
-    surface.commitPendingState()
+    surface.commitPending()
   }
 
   private _map() {
@@ -171,6 +171,7 @@ export default class XWaylandShellSurface implements UserShellSurfaceRole {
           const deltaY = pointer.y - pointerY
 
           topLevelView.positionOffset = Point.create(origPosition.x + deltaX, origPosition.y + deltaY)
+          topLevelView.applyTransformations()
           topLevelView.scene.render()
         }
 

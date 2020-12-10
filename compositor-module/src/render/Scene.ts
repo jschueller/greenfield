@@ -85,7 +85,7 @@ class Scene {
     }
   }
 
-  private prepareViewRenderState(view: View) {
+  prepareViewRenderState(view: View) {
     view.applyTransformations()
     const { buffer, bufferContents } = view.surface.state
     if (bufferContents instanceof DecodedFrame
@@ -106,17 +106,16 @@ class Scene {
     }
   }
 
-  render(frameCallbacks?: Callback[]): Promise<void> {
+  registerFrameCallbacks(frameCallbacks?: Callback[]){
     if (frameCallbacks) {
       this.frameCallbacks = [...this.frameCallbacks, ...frameCallbacks]
     }
+  }
+
+  render(): Promise<void> {
     if (!this._renderFrame) {
       this._renderFrame = createRenderFrame().then((time) => {
-        this._renderFrame?.then(time => {
-          this.session.flush()
-          return time
-        })
-        this.renderNow(time)
+        this.renderNow()
         this.frameCallbacks.forEach(callback => callback.done(time))
         this.frameCallbacks = []
         this.session.flush()
@@ -125,22 +124,25 @@ class Scene {
     return this._renderFrame
   }
 
-  private renderNow(time: number) {
-    this.ensureResolution()
+  prepareAllViewRenderState() {
     const viewStack = this.viewStack()
-
     // update textures
     viewStack.forEach(view => this.prepareViewRenderState(view))
     if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
       this.prepareViewRenderState(this.pointerView)
     }
+  }
+
+  private renderNow() {
+    this.ensureResolution()
+    const viewStack = this.viewStack()
 
     // render view texture
     this.sceneShader.use()
     this.sceneShader.updateSceneData(Size.create(this.canvas.width, this.canvas.height))
-    viewStack.forEach(view => this.renderView(view, time))
+    viewStack.forEach(view => this.renderView(view))
     if (this.pointerView && this.session.globals.seat.pointer.scene === this) {
-      this.renderView(this.pointerView, time)
+      this.renderView(this.pointerView)
     }
     this.sceneShader.release()
 
@@ -175,7 +177,7 @@ class Scene {
     }
   }
 
-  private renderView(view: View, time: number) {
+  private renderView(view: View) {
     if (view.mapped) {
       this.sceneShader.updateViewData(view)
       this.sceneShader.draw()

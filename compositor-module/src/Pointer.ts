@@ -157,7 +157,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     if (this._cursorSurface && this._cursorSurface.implementation === surface) {
       this.hotspotX -= surface.pendingState.dx
       this.hotspotY -= surface.pendingState.dy
-      surface.commitPendingState()
+      surface.commitPending()
     }
   }
 
@@ -280,6 +280,7 @@ export default class Pointer implements WlPointerRequests, SurfaceRole {
     this.scene = this.session.renderer.scenes[event.sceneId]
     if (this.scene.pointerView) {
       this.scene.pointerView.positionOffset = Point.create(this.x, this.y).minus(Point.create(this.hotspotX, this.hotspotY))
+      this.scene.pointerView.applyTransformations()
       this.scene.render()
     }
 
