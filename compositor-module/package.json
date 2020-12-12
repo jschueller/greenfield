@@ -41,7 +41,8 @@
   "dependencies": {
     "tinyh264": "0.0.6",
     "westfield-runtime-common": "0.4.4",
-    "westfield-runtime-server": "0.4.4"
+    "westfield-runtime-server": "0.4.4",
+    "xtsb": "link:../../xtsb"
   },
   "devDependencies": {
     "@commitlint/cli": "^11.0.0",
